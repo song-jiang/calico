@@ -99,6 +99,9 @@ class TestFelixOnGateway(TestBase):
         for host in cls.hosts:
             host.start_calico_node()
 
+        # Run local httpd server on gateway.
+        cls.gateway.execute("echo '<HTML> Local process </HTML>' > $HOME/index.html && httpd -p 80 -h $HOME")    
+
         # Get the internal IP of the gateway.  We do this before we add the second
         # network since it means we don't have to figure out which IP is which.
         int_ip = str(cls.gateway.ip)
@@ -123,6 +126,17 @@ class TestFelixOnGateway(TestBase):
         cls.gateway.execute("iptables -t nat -A POSTROUTING --destination %s -j MASQUERADE" %
                             cls.ext_server_ip)
 
+        cls.calinet = cls.gateway.create_network("calinet")
+        cls.gateway_workload = cls.gateway.create_workload("gw-wl",
+                                    image="workload",
+                                    network=cls.calinet,
+                                    labels=["org.projectcalico.label.wep=gateway"])       
+        
+        cls.host_workload = cls.host.create_workload("host-wl",
+                                    image="workload",
+                                    network=cls.calinet,
+                                    labels=["org.projectcalico.label.wep=host"])                                                                      
+
     def setUp(self):
         # Override the per-test setUp to avoid wiping etcd; instead only clean up the data we
         # added.
@@ -140,216 +154,285 @@ class TestFelixOnGateway(TestBase):
         for host in cls.hosts:
             host.cleanup()
             del host
+        cls.calinet.delete()
 
         log_and_run("docker rm -f cali-st-ext-nginx || true")
 
-    def test_ingress_policy_can_block_through_traffic(self):
-        self.add_policy({
-            'apiVersion': 'v1',
-            'kind': 'policy',
-            'metadata': {'name': 'port80-int'},
-            'spec': {
-                'order': 10,
-                'ingress': [
-                    {
-                        'protocol': 'tcp',
-                        'destination': {'ports': [80]},
-                        'action': 'deny'
-                    },
-                ],
-                'egress': [
-                    {'action': 'deny'},
-                ],
-                'selector': 'role == "gateway-int"'
-            }
-        })
-        self.add_gateway_internal_iface()
-        retry_until_success(self.assert_host_can_not_curl_ext, 3)
-
-    def test_ingress_policy_can_allow_through_traffic(self):
-        self.add_policy({
-            'apiVersion': 'v1',
-            'kind': 'policy',
-            'metadata': {'name': 'port80-int'},
-            'spec': {
-                'order': 10,
-                'ingress': [
-                    {
-                        'protocol': 'tcp',
-                        'destination': {'ports': [80]},
-                        'action': 'allow'
-                    },
-                ],
-                'egress': [
-                    {'action': 'deny'},
-                ],
-                'selector': 'role == "gateway-int"'
-            }
-        })
-        self.add_gateway_internal_iface()
+    def test_can_connect_by_default(self):
+        retry_until_success(self.assert_host_can_curl_local, 3)
+        retry_until_success(self.assert_gateway_can_curl_ext, 3)
         retry_until_success(self.assert_host_can_curl_ext, 3)
+        retry_until_success(self.assert_hostwl_can_access_workload, 3)
+        retry_until_success(self.assert_workload_can_curl_ext, 3)
 
-    def test_egress_policy_can_block_through_traffic(self):
-        self.add_policy({
-            'apiVersion': 'v1',
-            'kind': 'policy',
-            'metadata': {'name': 'port80-ext'},
-            'spec': {
-                'order': 10,
-                'ingress': [
-                    {
-                        'action': 'deny',
-                    },
-                ],
-                'egress': [
-                    {
-                        'protocol': 'tcp',
-                        'destination': {'ports': [80]},
-                        'action': 'deny'
-                    },
-                ],
-                'selector': 'role == "gateway-ext"'
-            }
-        })
-        self.add_gateway_external_iface()
-        retry_until_success(self.assert_host_can_not_curl_ext, 3)
-
-    def test_egress_policy_can_allow_through_traffic(self):
-        self.add_policy({
-            'apiVersion': 'v1',
-            'kind': 'policy',
-            'metadata': {'name': 'port80-ext'},
-            'spec': {
-                'order': 10,
-                'ingress': [
-                    {
-                        'action': 'deny',
-                    },
-                ],
-                'egress': [
-                    {
-                        'protocol': 'tcp',
-                        'destination': {'ports': [80]},
-                        'action': 'allow'
-                    },
-                ],
-                'selector': 'role == "gateway-ext"'
-            }
-        })
-        self.add_gateway_external_iface()
-        retry_until_success(self.assert_host_can_curl_ext, 3)
-
-    def test_ingress_and_egress_policy_can_allow_through_traffic(self):
-        self.add_gateway_external_iface()
-        self.add_gateway_internal_iface()
         self.add_host_iface()
 
         # Adding the host endpoints should break connectivity until we add policy back in.
-        retry_until_success(self.assert_host_can_not_curl_ext, 3)
-
-        # Add in the policy...
+        # Add allow policy for host, make sure it applies to forward and has order lower than empty forward.
         self.add_policy({
             'apiVersion': 'v1',
             'kind': 'policy',
             'metadata': {'name': 'host-out'},
             'spec': {
-                'order': 10,
-                'selector': 'role == "host"',
+                'order': 100,
+                'selector': 'nodeEth == "host"',
                 'egress': [{'action': 'allow'}],
                 'ingress': [{'action': 'allow'}],
+                'applyOnForward': True,
             }
         })
-        self.add_policy({
-            'apiVersion': 'v1',
-            'kind': 'policy',
-            'metadata': {'name': 'port80-int'},
-            'spec': {
-                'order': 10,
-                'ingress': [
-                    {
-                        'protocol': 'tcp',
-                        'destination': {
-                            'ports': [80],
-                            'net': self.ext_server_ip + "/32",
-                        },
-                        'source': {
-                            'selector': 'role == "host"',
-                        },
-                        'action': 'allow'
-                    },
-                ],
-                'egress': [],
-                'selector': 'role == "gateway-int"'
-            }
-        })
-        self.add_policy({
-            'apiVersion': 'v1',
-            'kind': 'policy',
-            'metadata': {'name': 'port80-ext'},
-            'spec': {
-                'order': 10,
-                'ingress': [],
-                'egress': [
-                    {
-                        'protocol': 'tcp',
-                        'destination': {
-                            'ports': [80],
-                            'net': self.ext_server_ip + "/32",
-                        },
-                        'source': {
-                            'selector': 'role == "host"',
-                        },
-                        'action': 'allow'
-                    },
-                ],
-                'selector': 'role == "gateway-ext"'
-            }
-        })
-
         retry_until_success(self.assert_host_can_curl_ext, 3)
 
-    @parameterized.expand([
-        ('allow', 'deny'),
-        ('deny', 'allow')
-    ])
-    def test_conflicting_ingress_and_egress_policy(self, in_action, out_action):
-        # If there is policy on the ingress and egress interface then both should
-        # get applied and 'deny' should win.
-        self.add_host_iface()
+    def test_default_deny_for_local_traffic(self):
+        self.test_can_connect_by_default()
+
         self.add_gateway_external_iface()
         self.add_gateway_internal_iface()
 
+        retry_until_success(self.assert_host_can_not_curl_local, 3)
+        retry_until_success(self.assert_gateway_can_not_curl_ext, 3)
+        retry_until_success(self.assert_host_can_curl_ext, 3)
+        retry_until_success(self.assert_hostwl_can_access_workload, 3)
+        retry_until_success(self.assert_workload_can_curl_ext, 3)
+
+    def test_empty_policy_for_forward_traffic(self):
+        self.test_can_connect_by_default()
+
+        self.add_gateway_external_iface()
+        self.add_gateway_internal_iface()
+
+        # Add empty policy forward, but only to host endpoint.
         self.add_policy({
             'apiVersion': 'v1',
             'kind': 'policy',
-            'metadata': {'name': 'port80-int'},
+            'metadata': {'name': 'empty-forward'},
             'spec': {
-                'order': 10,
-                'ingress': [
-                    {
-                        'action': in_action
-                    },
-                ],
+                'order': 500,
+                'selector': 'has(nodeEth)',
+                'ingress': [],
                 'egress': [],
-                'selector': 'role == "gateway-int"'
+                'applyOnForward': True,
+                'types': ['ingress', 'egress']
             }
         })
+        
+        retry_until_success(self.assert_host_can_not_curl_local, 3)
+        retry_until_success(self.assert_gateway_can_not_curl_ext, 3)
+        retry_until_success(self.assert_host_can_not_curl_ext, 3)
+        retry_until_success(self.assert_hostwl_can_not_access_workload, 3)
+        retry_until_success(self.assert_workload_can_not_curl_ext, 3)
+        
+
+    def test_local_allow_with_forward_empty(self):
+        self.test_empty_policy_for_forward_traffic()
+
+        # Add local ingress/egress allow.
+        self.add_ingress_policy(200, 'allow', False)
+        self.add_egress_policy(200, 'allow', False)
+
+        retry_until_success(self.assert_host_can_curl_local, 3)
+        retry_until_success(self.assert_gateway_can_curl_ext, 3)
+        retry_until_success(self.assert_host_can_not_curl_ext, 3)
+        retry_until_success(self.assert_hostwl_can_not_access_workload, 3)
+        retry_until_success(self.assert_workload_can_not_curl_ext, 3)    
+
+        # Add local&forward ingress/egress allow.
+        self.add_ingress_policy(200, 'allow', True)
+        self.add_egress_policy(200, 'allow', True)
+
+        retry_until_success(self.assert_host_can_curl_local, 3)
+        retry_until_success(self.assert_gateway_can_curl_ext, 3)
+        retry_until_success(self.assert_host_can_curl_ext, 3)
+        retry_until_success(self.assert_hostwl_can_access_workload, 3)
+        retry_until_success(self.assert_workload_can_curl_ext, 3)    
+
+    def test_local_deny_with_lower_forward_allow(self):
+        self.test_empty_policy_for_forward_traffic() # setup a deny for all traffic
+
+        # Add local&forward ingress/egress allow.
+        self.add_ingress_policy(300, 'allow', True)
+        self.add_egress_policy(300, 'allow', True)
+
+        retry_until_success(self.assert_host_can_curl_local, 3)
+        retry_until_success(self.assert_gateway_can_curl_ext, 3)
+        retry_until_success(self.assert_host_can_curl_ext, 3)
+        retry_until_success(self.assert_hostwl_can_access_workload, 3)
+        retry_until_success(self.assert_workload_can_curl_ext, 3)    
+
+         # Add local ingress/egress deny.
+        self.add_ingress_policy(200, 'deny', False)
+        self.add_egress_policy(200, 'deny', False)
+
+        retry_until_success(self.assert_host_can_not_curl_local, 3)
+        retry_until_success(self.assert_gateway_can_not_curl_ext, 3)
+        retry_until_success(self.assert_host_can_curl_ext, 3)
+        retry_until_success(self.assert_hostwl_can_access_workload, 3)
+        retry_until_success(self.assert_workload_can_curl_ext, 3)   
+
+    def test_local_ingress_allow_with_lower_ingress_forward_deny(self):
+        self.test_can_connect_by_default()
+
+        self.add_gateway_external_iface()
+        self.add_gateway_internal_iface()
+        
+        # Add local ingress allow and forward ingress deny
+        self.add_ingress_policy(200, 'allow', False)
+        self.add_ingress_policy(500, 'deny', True)
+
+        retry_until_success(self.assert_host_can_curl_local, 3)
+        retry_until_success(self.assert_gateway_can_not_curl_ext, 3)
+        retry_until_success(self.assert_host_can_not_curl_ext, 3)
+        retry_until_success(self.assert_hostwl_can_not_access_workload, 3)
+        retry_until_success(self.assert_workload_can_curl_ext, 3)
+
+        # Add workload egress deny
         self.add_policy({
             'apiVersion': 'v1',
             'kind': 'policy',
-            'metadata': {'name': 'port80-ext'},
+            'metadata': {'name': 'workload-egress'},
             'spec': {
-                'order': 10,
+                'order': 800,
                 'ingress': [],
                 'egress': [
                     {
-                        'action': out_action
+                        'protocol': 'tcp',
+                        'destination': {
+                            'ports': [80],
+                            'net': self.ext_server_ip + "/32",
+                        },
+                        'action': 'deny'
                     },
                 ],
-                'selector': 'role == "gateway-ext"'
+                'selector': '!has(nodeEth)'
             }
         })
+
+        retry_until_success(self.assert_host_can_curl_local, 3)
+        retry_until_success(self.assert_gateway_can_not_curl_ext, 3)
         retry_until_success(self.assert_host_can_not_curl_ext, 3)
+        retry_until_success(self.assert_hostwl_can_not_access_workload, 3)
+        retry_until_success(self.assert_workload_can_not_curl_ext, 3)
+
+
+    def test_local_egress_allow_with_lower_egress_forward_deny(self):
+        self.test_can_connect_by_default()
+
+        self.add_gateway_external_iface()
+        self.add_gateway_internal_iface()
+        
+        # Add local egress allow and forward egress deny
+        self.add_egress_policy(200, 'allow', False)
+        self.add_egress_policy(500, 'deny', True)
+
+        retry_until_success(self.assert_host_can_not_curl_local, 3)
+        retry_until_success(self.assert_gateway_can_curl_ext, 3)
+        retry_until_success(self.assert_host_can_not_curl_ext, 3)
+        retry_until_success(self.assert_hostwl_can_access_workload, 3)
+        retry_until_success(self.assert_workload_can_not_curl_ext, 3)
+
+        # Add workload ingress deny
+        self.add_policy({
+            'apiVersion': 'v1',
+            'kind': 'policy',
+            'metadata': {'name': 'workload-ingress'},
+            'spec': {
+                'order': 800,
+                'ingress': [
+                    {
+                        'protocol': 'tcp',
+                        'destination': {
+                            'ports': [80]
+                        },
+                        'action': 'deny'
+                    },
+                ],
+                'egress': [],
+                'selector': '!has(nodeEth)'
+            }
+        })
+
+        retry_until_success(self.assert_host_can_not_curl_local, 3)
+        retry_until_success(self.assert_gateway_can_curl_ext, 3)
+        retry_until_success(self.assert_host_can_not_curl_ext, 3)
+        retry_until_success(self.assert_hostwl_can_not_access_workload, 3)
+        retry_until_success(self.assert_workload_can_not_curl_ext, 3)
+
+    def test_local_forward_opposite_policy_0(self):
+        self.test_can_connect_by_default()
+
+        self.add_gateway_external_iface()
+        self.add_gateway_internal_iface()
+        
+        # Add local ingress allow, egress deny and lower forward ingress deny, forward egress allow
+        self.add_ingress_policy(200, 'allow', False)
+        self.add_ingress_policy(500, 'deny', True)
+        self.add_egress_policy(200, 'deny', False)
+        self.add_egress_policy(500, 'allow', True)
+
+        retry_until_success(self.assert_host_can_curl_local, 3)
+        retry_until_success(self.assert_gateway_can_not_curl_ext, 3)
+        retry_until_success(self.assert_host_can_not_curl_ext, 3)        
+
+    def test_local_forward_opposite_policy_1(self):
+        self.test_can_connect_by_default()
+
+        self.add_gateway_external_iface()
+        self.add_gateway_internal_iface()
+        
+        # Add local ingress deny, egress allow and lower forward ingress allow, forward egress deny
+        self.add_ingress_policy(200, 'deny', False)
+        self.add_ingress_policy(500, 'allow', True)
+        self.add_egress_policy(200, 'allow', False)
+        self.add_egress_policy(500, 'deny', True)
+
+        retry_until_success(self.assert_host_can_not_curl_local, 3)
+        retry_until_success(self.assert_gateway_can_curl_ext, 3)
+        retry_until_success(self.assert_host_can_not_curl_ext, 3)           
+
+    def add_ingress_policy(self, order, action, forward):
+        self.add_policy({
+            'apiVersion': 'v1',
+            'kind': 'policy',
+            'metadata': {'name': 'port80-int-%s' % str(forward)},
+            'spec': {
+                'order': order,
+                'ingress': [
+                    {
+                        'protocol': 'tcp',
+                        'destination': { 
+                            'ports': [80]  
+                        },
+                        'action': action
+                    },
+                ],
+                'egress': [],
+                'selector': 'nodeEth == "gateway-int"',
+                'applyOnForward': forward
+            }
+        })
+
+    def add_egress_policy(self, order, action, forward):
+        self.add_policy({
+            'apiVersion': 'v1',
+            'kind': 'policy',
+            'metadata': {'name': 'port80-ext-%s' % str(forward)},
+            'spec': {
+                'order': order,
+                'ingress': [],
+                'egress': [
+                    {
+                        'protocol': 'tcp',
+                        'destination': {
+                            'ports': [80],
+                            'net': self.ext_server_ip + "/32",
+                        },
+                        'action': action
+                    },
+                ],
+                'selector': 'nodeEth == "gateway-ext"',
+                'applyOnForward': forward
+            }
+        })   
 
     def add_policy(self, policy_data):
         self._apply_resources(policy_data, self.gateway)
@@ -361,7 +444,7 @@ class TestFelixOnGateway(TestBase):
             'metadata': {
                 'name': 'gw-int',
                 'node': self.gateway_hostname,
-                'labels': {'role': 'gateway-int'}
+                'labels': {'nodeEth': 'gateway-int'}
             },
             'spec': {
                 'interfaceName': 'eth0'
@@ -376,7 +459,7 @@ class TestFelixOnGateway(TestBase):
             'metadata': {
                 'name': 'gw-ext',
                 'node': self.gateway_hostname,
-                'labels': {'role': 'gateway-ext'}
+                'labels': {'nodeEth': 'gateway-ext'}
             },
             'spec': {
                 'interfaceName': 'eth1'
@@ -391,7 +474,7 @@ class TestFelixOnGateway(TestBase):
             'metadata': {
                 'name': 'host-int',
                 'node': self.host_hostname,
-                'labels': {'role': 'host'}
+                'labels': {'nodeEth': 'host'}
             },
             'spec': {
                 'interfaceName': 'eth0',
@@ -399,6 +482,68 @@ class TestFelixOnGateway(TestBase):
             }
         }
         self._apply_resources(host_endpoint_data, self.gateway)
+
+    def assert_host_can_curl_local(self):
+        try:
+            self.host.execute("curl --fail -m 1 -o /tmp/local-index.html %s" % self.gateway_int_ip)
+        except subprocess.CalledProcessError:
+            _log.exception("Internal host failed to curl gateway internal IP: %s",
+                           self.gateway_int_ip)
+            self.fail("Internal host failed to curl gateway internal IP: %s" % self.gateway_int_ip)
+
+    def assert_host_can_not_curl_local(self):
+        try:
+            self.host.execute("curl --fail -m 1 -o /tmp/local-index.html %s" % self.gateway_int_ip)
+        except subprocess.CalledProcessError:
+            return
+        else:
+            self.fail("Internal host can curl gateway internal IP: %s" % self.gateway_int_ip)    
+
+    def assert_hostwl_can_access_workload(self):
+        if self.host_workload.check_can_tcp(self.gateway_workload.ip, 1):
+            return
+        _log.exception("Internal host workload failed to access gateway internal workload IP: %s",
+                           self.gateway_workload.ip)
+        self.fail("Internal host workload failed to access gateway internal workload IP: %s" % self.gateway_workload.ip)
+
+    def assert_hostwl_can_not_access_workload(self):
+        if self.host_workload.check_cant_tcp(self.gateway_workload.ip, 1):
+            return
+        _log.exception("Internal host workload can access gateway internal workload IP: %s",
+                           self.gateway_workload.ip)
+        self.fail("Internal host workload can access gateway internal workload IP: %s" % self.gateway_workload.ip)
+    
+    def assert_workload_can_curl_ext(self):
+        try:
+            self.gateway_workload.execute("wget -q -T 1 %s -O /dev/null" % self.ext_server_ip)
+        except subprocess.CalledProcessError:
+            _log.exception("Gateway workload failed to curl external server IP: %s",
+                           self.ext_server_ip)
+            self.fail("Gateway workload failed to curl external server IP: %s" % self.ext_server_ip)    
+
+    def assert_workload_can_not_curl_ext(self):
+        try:
+            self.gateway_workload.execute("wget -q -T 1 %s -O /dev/null" % self.ext_server_ip)
+        except subprocess.CalledProcessError:
+            return
+        else:
+            self.fail("Gateway workload can curl external server IP: %s" % self.ext_server_ip)         
+
+    def assert_gateway_can_curl_ext(self):
+        try:
+            self.gateway.execute("curl --fail -m 1 -o /tmp/nginx-index.html %s" % self.ext_server_ip)
+        except subprocess.CalledProcessError:
+            _log.exception("Gateway failed to curl external server IP: %s",
+                           self.ext_server_ip)
+            self.fail("Gateway failed to curl external server IP: %s" % self.ext_server_ip)    
+    
+    def assert_gateway_can_not_curl_ext(self):
+        try:
+            self.gateway.execute("curl --fail -m 1 -o /tmp/nginx-index.html %s" % self.ext_server_ip)
+        except subprocess.CalledProcessError:
+            return
+        else:
+            self.fail("Gateway can curl external server IP: %s" % self.ext_server_ip)                 
 
     def assert_host_can_curl_ext(self):
         try:
