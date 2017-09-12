@@ -32,23 +32,16 @@ However, for host endpoints, Calico is more lenient; it only polices
 traffic to/from interfaces that it's been explicitly told about. Traffic
 to/from other interfaces is left alone.
 
-As of Calico v2.1.0, Calico applies host endpoint security policy both to traffic
-that is terminated locally, and to traffic that is forwarded between host
-endpoints.  Previously, policy was only applied to traffic that was terminated
-locally.  The change allows Calico to be used to secure a NAT gateway or router.
-Calico supports selector-based policy as normal when running on a gateway or router
-allowing for rich, dynamic security policy based on the labels attached to your
+Since Calico v2.1.0, host endpoint policy applies to local teminated traffic and forwarded traffic between host endpoints. This allows Calico to be used to secure a NAT gateway or router. As of Calico v2.7.0, host endpoint policy has been extended to apply to three types of traffic, traffic
+that is terminated locally, traffic that is forwarded between host endpoints, and traffic that is forwarded between host endpoint and workload endpoint on the same host. Calico v2.7.0 also introduced ApplyOnForward flag to allow users to specify if a given host endpoint policy applies to forward traffic or not. Calico supports selector-based policy as normal when running on a gateway or router allowing for rich, dynamic security policy based on the labels attached to your
 workloads.
 
 > **NOTE**
 >
-> If you have a host with workloads on it then traffic that is forwarded to
-> workloads bypasses the policy applied to host endpoints. If that weren't the
-> case, the host endpoint policy would need to be very broad to allow all
-> traffic destined for any possible workload.
+> Both traffic forwarded between host endpoints and traffic 
+> forwarded between host endpoint and workload endpoint on the
+> same host are regarded as `forward traffic`. 
 >
-> Since version 2.1.0, Calico applies host endpoint policy to traffic that is
-> being forwarded between host interfaces.
 >
 > ![]({{site.baseurl}}/images/bare-metal-packet-flows.png)
 
@@ -482,6 +475,15 @@ outside the cluster:
    incoming packet, that packet is allowed to continue on its way, and will
    then be accepted or dropped according to workload policy (if it is going to
    a local workload) or to normal host endpoint policy (if not).
+
+## Policy on forward traffic
+
+Host endpoint policy applies to local input/output traffic and forward traffic if `applyOnForward` is `true`. 
+Host endpoint policy applies to local input/output traffic only if `applyOnForward` is `false`. 
+
+Untracked policy and Pre-DNAT policy will always have `applyOnForward` set to `true` because it applies to all forward traffic. 
+
+By default, `applyOnForward` is set to `false`.
 
 ## When do host endpoint policies apply?
 

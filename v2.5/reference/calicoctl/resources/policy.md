@@ -67,6 +67,8 @@ the policy is enforced after connection tracking and any DNAT.
 
 `applyOnForward` must be set to `true` if either `doNotTrack` or `preDNAT` is `true` because for a given policy, any untracked rules or rules before DNAT will in practise apply on forward traffic.
 
+Policy applies to both traffic forwarded between host endpoints and traffic forwarded between host endpoint and workload endpoint on the same host, if `applyOnForward` set to true.
+
 See [Using Calico to Secure Host Interfaces]({{site.baseurl}}/{{page.version}}/getting-started/bare-metal/bare-metal)
 for how `doNotTrack`, `preDNAT` and `applyOnForward` can be useful for host endpoints.
 
