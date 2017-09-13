@@ -15,9 +15,8 @@
 import json
 import logging
 import subprocess
-import yaml
-from nose_parameterized import parameterized
 
+import yaml
 from tests.st.test_base import TestBase
 from tests.st.utils.docker_host import DockerHost, CLUSTER_STORE_DOCKER_OPTIONS
 from tests.st.utils.utils import get_ip, log_and_run, retry_until_success, \
@@ -31,6 +30,7 @@ POST_DOCKER_COMMANDS = [
     "docker load -i /code/busybox.tar",
     "docker load -i /code/workload.tar",
 ]
+
 
 class TestFelixOnGateway(TestBase):
     """
@@ -100,7 +100,8 @@ class TestFelixOnGateway(TestBase):
             host.start_calico_node()
 
         # Run local httpd server on gateway.
-        cls.gateway.execute("echo '<HTML> Local process </HTML>' > $HOME/index.html && httpd -p 80 -h $HOME")    
+        cls.gateway.execute(
+            "echo '<HTML> Local process </HTML>' > $HOME/index.html && httpd -p 80 -h $HOME")
 
         # Get the internal IP of the gateway.  We do this before we add the second
         # network since it means we don't have to figure out which IP is which.
@@ -127,15 +128,17 @@ class TestFelixOnGateway(TestBase):
                             cls.ext_server_ip)
 
         cls.calinet = cls.gateway.create_network("calinet")
-        cls.gateway_workload = cls.gateway.create_workload("gw-wl",
-                                    image="workload",
-                                    network=cls.calinet,
-                                    labels=["org.projectcalico.label.wep=gateway"])       
-        
-        cls.host_workload = cls.host.create_workload("host-wl",
-                                    image="workload",
-                                    network=cls.calinet,
-                                    labels=["org.projectcalico.label.wep=host"])                                                                      
+        cls.gateway_workload = cls.gateway.create_workload(
+            "gw-wl",
+            image="workload",
+            network=cls.calinet,
+            labels=["org.projectcalico.label.wep=gateway"])
+
+        cls.host_workload = cls.host.create_workload(
+            "host-wl",
+            image="workload",
+            network=cls.calinet,
+            labels=["org.projectcalico.label.wep=host"])
 
     def setUp(self):
         # Override the per-test setUp to avoid wiping etcd; instead only clean up the data we
@@ -168,7 +171,8 @@ class TestFelixOnGateway(TestBase):
         self.add_host_iface()
 
         # Adding the host endpoints should break connectivity until we add policy back in.
-        # Add allow policy for host, make sure it applies to forward and has order lower than empty forward.
+        # Add allow policy for host, make sure it applies to forward and has order lower than
+        # empty forward.
         self.add_policy({
             'apiVersion': 'v1',
             'kind': 'policy',
@@ -215,13 +219,12 @@ class TestFelixOnGateway(TestBase):
                 'types': ['ingress', 'egress']
             }
         })
-        
+
         retry_until_success(self.assert_host_can_not_curl_local, 3)
         retry_until_success(self.assert_gateway_can_not_curl_ext, 3)
         retry_until_success(self.assert_host_can_not_curl_ext, 3)
         retry_until_success(self.assert_hostwl_can_not_access_workload, 3)
         retry_until_success(self.assert_workload_can_not_curl_ext, 3)
-        
 
     def test_local_allow_with_forward_empty(self):
         self.test_empty_policy_for_forward_traffic()
@@ -234,7 +237,7 @@ class TestFelixOnGateway(TestBase):
         retry_until_success(self.assert_gateway_can_curl_ext, 3)
         retry_until_success(self.assert_host_can_not_curl_ext, 3)
         retry_until_success(self.assert_hostwl_can_not_access_workload, 3)
-        retry_until_success(self.assert_workload_can_not_curl_ext, 3)    
+        retry_until_success(self.assert_workload_can_not_curl_ext, 3)
 
         # Add local&forward ingress/egress allow.
         self.add_ingress_policy(200, 'allow', True)
@@ -244,10 +247,10 @@ class TestFelixOnGateway(TestBase):
         retry_until_success(self.assert_gateway_can_curl_ext, 3)
         retry_until_success(self.assert_host_can_curl_ext, 3)
         retry_until_success(self.assert_hostwl_can_access_workload, 3)
-        retry_until_success(self.assert_workload_can_curl_ext, 3)    
+        retry_until_success(self.assert_workload_can_curl_ext, 3)
 
     def test_local_deny_with_lower_forward_allow(self):
-        self.test_empty_policy_for_forward_traffic() # setup a deny for all traffic
+        self.test_empty_policy_for_forward_traffic()  # setup a deny for all traffic
 
         # Add local&forward ingress/egress allow.
         self.add_ingress_policy(300, 'allow', True)
@@ -257,9 +260,9 @@ class TestFelixOnGateway(TestBase):
         retry_until_success(self.assert_gateway_can_curl_ext, 3)
         retry_until_success(self.assert_host_can_curl_ext, 3)
         retry_until_success(self.assert_hostwl_can_access_workload, 3)
-        retry_until_success(self.assert_workload_can_curl_ext, 3)    
+        retry_until_success(self.assert_workload_can_curl_ext, 3)
 
-         # Add local ingress/egress deny.
+        # Add local ingress/egress deny.
         self.add_ingress_policy(200, 'deny', False)
         self.add_egress_policy(200, 'deny', False)
 
@@ -267,14 +270,14 @@ class TestFelixOnGateway(TestBase):
         retry_until_success(self.assert_gateway_can_not_curl_ext, 3)
         retry_until_success(self.assert_host_can_curl_ext, 3)
         retry_until_success(self.assert_hostwl_can_access_workload, 3)
-        retry_until_success(self.assert_workload_can_curl_ext, 3)   
+        retry_until_success(self.assert_workload_can_curl_ext, 3)
 
     def test_local_ingress_allow_with_lower_ingress_forward_deny(self):
         self.test_can_connect_by_default()
 
         self.add_gateway_external_iface()
         self.add_gateway_internal_iface()
-        
+
         # Add local ingress allow and forward ingress deny
         self.add_ingress_policy(200, 'allow', False)
         self.add_ingress_policy(500, 'deny', True)
@@ -313,13 +316,12 @@ class TestFelixOnGateway(TestBase):
         retry_until_success(self.assert_hostwl_can_not_access_workload, 3)
         retry_until_success(self.assert_workload_can_not_curl_ext, 3)
 
-
     def test_local_egress_allow_with_lower_egress_forward_deny(self):
         self.test_can_connect_by_default()
 
         self.add_gateway_external_iface()
         self.add_gateway_internal_iface()
-        
+
         # Add local egress allow and forward egress deny
         self.add_egress_policy(200, 'allow', False)
         self.add_egress_policy(500, 'deny', True)
@@ -362,7 +364,7 @@ class TestFelixOnGateway(TestBase):
 
         self.add_gateway_external_iface()
         self.add_gateway_internal_iface()
-        
+
         # Add local ingress allow, egress deny and lower forward ingress deny, forward egress allow
         self.add_ingress_policy(200, 'allow', False)
         self.add_ingress_policy(500, 'deny', True)
@@ -371,14 +373,14 @@ class TestFelixOnGateway(TestBase):
 
         retry_until_success(self.assert_host_can_curl_local, 3)
         retry_until_success(self.assert_gateway_can_not_curl_ext, 3)
-        retry_until_success(self.assert_host_can_not_curl_ext, 3)        
+        retry_until_success(self.assert_host_can_not_curl_ext, 3)
 
     def test_local_forward_opposite_policy_1(self):
         self.test_can_connect_by_default()
 
         self.add_gateway_external_iface()
         self.add_gateway_internal_iface()
-        
+
         # Add local ingress deny, egress allow and lower forward ingress allow, forward egress deny
         self.add_ingress_policy(200, 'deny', False)
         self.add_ingress_policy(500, 'allow', True)
@@ -387,7 +389,7 @@ class TestFelixOnGateway(TestBase):
 
         retry_until_success(self.assert_host_can_not_curl_local, 3)
         retry_until_success(self.assert_gateway_can_curl_ext, 3)
-        retry_until_success(self.assert_host_can_not_curl_ext, 3)           
+        retry_until_success(self.assert_host_can_not_curl_ext, 3)
 
     def add_ingress_policy(self, order, action, forward):
         self.add_policy({
@@ -399,8 +401,8 @@ class TestFelixOnGateway(TestBase):
                 'ingress': [
                     {
                         'protocol': 'tcp',
-                        'destination': { 
-                            'ports': [80]  
+                        'destination': {
+                            'ports': [80]
                         },
                         'action': action
                     },
@@ -432,7 +434,7 @@ class TestFelixOnGateway(TestBase):
                 'selector': 'nodeEth == "gateway-ext"',
                 'applyOnForward': forward
             }
-        })   
+        })
 
     def add_policy(self, policy_data):
         self._apply_resources(policy_data, self.gateway)
@@ -497,29 +499,33 @@ class TestFelixOnGateway(TestBase):
         except subprocess.CalledProcessError:
             return
         else:
-            self.fail("Internal host can curl gateway internal IP: %s" % self.gateway_int_ip)    
+            self.fail("Internal host can curl gateway internal IP: %s" % self.gateway_int_ip)
 
     def assert_hostwl_can_access_workload(self):
         if self.host_workload.check_can_tcp(self.gateway_workload.ip, 1):
             return
         _log.exception("Internal host workload failed to access gateway internal workload IP: %s",
-                           self.gateway_workload.ip)
-        self.fail("Internal host workload failed to access gateway internal workload IP: %s" % self.gateway_workload.ip)
+                       self.gateway_workload.ip)
+        self.fail(
+            "Internal host workload failed to access gateway internal workload IP: %s" %
+            self.gateway_workload.ip)
 
     def assert_hostwl_can_not_access_workload(self):
         if self.host_workload.check_cant_tcp(self.gateway_workload.ip, 1):
             return
         _log.exception("Internal host workload can access gateway internal workload IP: %s",
-                           self.gateway_workload.ip)
-        self.fail("Internal host workload can access gateway internal workload IP: %s" % self.gateway_workload.ip)
-    
+                       self.gateway_workload.ip)
+        self.fail(
+            "Internal host workload can access gateway internal workload IP: %s" %
+            self.gateway_workload.ip)
+
     def assert_workload_can_curl_ext(self):
         try:
             self.gateway_workload.execute("wget -q -T 1 %s -O /dev/null" % self.ext_server_ip)
         except subprocess.CalledProcessError:
             _log.exception("Gateway workload failed to curl external server IP: %s",
                            self.ext_server_ip)
-            self.fail("Gateway workload failed to curl external server IP: %s" % self.ext_server_ip)    
+            self.fail("Gateway workload failed to curl external server IP: %s" % self.ext_server_ip)
 
     def assert_workload_can_not_curl_ext(self):
         try:
@@ -527,23 +533,25 @@ class TestFelixOnGateway(TestBase):
         except subprocess.CalledProcessError:
             return
         else:
-            self.fail("Gateway workload can curl external server IP: %s" % self.ext_server_ip)         
+            self.fail("Gateway workload can curl external server IP: %s" % self.ext_server_ip)
 
     def assert_gateway_can_curl_ext(self):
         try:
-            self.gateway.execute("curl --fail -m 1 -o /tmp/nginx-index.html %s" % self.ext_server_ip)
+            self.gateway.execute(
+                "curl --fail -m 1 -o /tmp/nginx-index.html %s" % self.ext_server_ip)
         except subprocess.CalledProcessError:
             _log.exception("Gateway failed to curl external server IP: %s",
                            self.ext_server_ip)
-            self.fail("Gateway failed to curl external server IP: %s" % self.ext_server_ip)    
-    
+            self.fail("Gateway failed to curl external server IP: %s" % self.ext_server_ip)
+
     def assert_gateway_can_not_curl_ext(self):
         try:
-            self.gateway.execute("curl --fail -m 1 -o /tmp/nginx-index.html %s" % self.ext_server_ip)
+            self.gateway.execute(
+                "curl --fail -m 1 -o /tmp/nginx-index.html %s" % self.ext_server_ip)
         except subprocess.CalledProcessError:
             return
         else:
-            self.fail("Gateway can curl external server IP: %s" % self.ext_server_ip)                 
+            self.fail("Gateway can curl external server IP: %s" % self.ext_server_ip)
 
     def assert_host_can_curl_ext(self):
         try:
