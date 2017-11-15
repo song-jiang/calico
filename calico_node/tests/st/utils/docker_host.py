@@ -186,7 +186,7 @@ class DockerHost(object):
         if start_calico:
             self.start_calico_node()
 
-    def execute(self, command, raise_exception_on_failure=True):
+    def execute(self, command, raise_exception_on_failure=True, daemon_mode=False):
         """
         Pass a command into a host container.
 
@@ -201,9 +201,9 @@ class DockerHost(object):
         whitespace removed.
         """
         if self.dind:
+            option = "-d" if daemon_mode else "-it"
             command = self.escape_shell_single_quotes(command)
-            command = "docker exec -it %s sh -c '%s'" % (self.name,
-                                                         command)
+            command = "docker exec %s %s sh -c '%s'" % (option, self.name, command)
 
         return log_and_run(command, raise_exception_on_failure=raise_exception_on_failure)
 
@@ -451,7 +451,7 @@ class DockerHost(object):
         """
         self.cleanup(log_extra_diags=bool(exc_type))
 
-    def cleanup(self, log_extra_diags=False):
+    def cleanup(self, log_extra_diags=False, err_words=None):
         """
         Clean up this host, including removing any containers created.  This is
         necessary especially for Docker-in-Docker so we don't leave dangling
@@ -468,7 +468,7 @@ class DockerHost(object):
         log_exception = None
         try:
             if self.log_analyzer is not None:
-                self.log_analyzer.check_logs_for_exceptions()
+                self.log_analyzer.check_logs_for_exceptions(err_words)
         except Exception, e:
             log_exception = e
             log_extra_diags = True
