@@ -12,19 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
 import logging
-import os
-import subprocess
+import time
 from functools import partial
 
-import time
 import yaml
-from collections import OrderedDict
 from tests.st.test_base import TestBase, HOST_IPV4
 from tests.st.utils.docker_host import DockerHost, CLUSTER_STORE_DOCKER_OPTIONS
-from tests.st.utils.utils import get_ip, log_and_run, retry_until_success, \
-    ETCD_CA, ETCD_CERT, ETCD_KEY, ETCD_HOSTNAME_SSL, ETCD_SCHEME, \
+from tests.st.utils.utils import log_and_run, retry_until_success, \
     handle_failure, clear_on_failures, add_on_failure, wipe_etcd
 
 _log = logging.getLogger(__name__)
@@ -33,6 +28,7 @@ _log.setLevel(logging.DEBUG)
 POST_DOCKER_COMMANDS = [
     "docker load -i /code/calico-node.tar",
 ]
+
 
 class TestFelixConfig(TestBase):
     """
@@ -78,8 +74,8 @@ class TestFelixConfig(TestBase):
         """
         Test failsafe inbound configuration.
         """
-        random = {"udp":[70], "tcp":[3000, 5000]}
-        default = {"udp":[68], "tcp": [22, 179, 2379, 2380, 6666, 6667]}
+        random = {"udp": [70], "tcp": [3000, 5000]}
+        default = {"udp": [68], "tcp": [22, 179, 2379, 2380, 6666, 6667]}
 
         # Test random and default ports can be accessed with no host endpoints setup.
         self.run_failsafe(default, True)
@@ -111,8 +107,8 @@ class TestFelixConfig(TestBase):
         Test failsafe outbound configuration.
         """
         # We need to put 2379 into random because felix need to connect to etcd.
-        random = {"udp":[70], "tcp":[2379, 3000, 5000]}
-        default = {"udp":[53, 67], "tcp": [179, 2379, 2380, 6666, 6667]}
+        random = {"udp": [70], "tcp": [2379, 3000, 5000]}
+        default = {"udp": [53, 67], "tcp": [179, 2379, 2380, 6666, 6667]}
 
         # Test random and default ports can be accessed with no host endpoints setup.
         self.run_failsafe(default, True)
@@ -203,11 +199,13 @@ class TestFelixConfig(TestBase):
         self.add_felix_config(conf_name, {'logFilePath': default, 'LogSeverityFile': 'INFO'})
         self.restart_felix_no_config_file(self.host1)
 
-    def remove_ipset_command(self, host):
+    @staticmethod
+    def remove_ipset_command(host):
         cmd = "docker exec calico-node mv /usr/sbin/ipset /usr/sbin/ipset.backup"
         host.execute(cmd)
 
-    def restore_ipset_command(self, host):
+    @staticmethod
+    def restore_ipset_command(host):
         cmd = "docker exec calico-node mv /usr/sbin/ipset.backup /usr/sbin/ipset"
         host.execute(cmd)
 
@@ -244,9 +242,11 @@ class TestFelixConfig(TestBase):
             result = host.execute(cmd, raise_exception_on_failure=False)
             _log.info("Check keywords result is %s", result)
             if result == "0" and expect:
-                self.fail(("Log file %s does not contain keyword %s which is not expected." % (log_file, keyword)))
+                self.fail(("Log file %s does not contain keyword %s which is not "
+                           "expected." % (log_file, keyword)))
             if result != "0" and not expect:
-                self.fail(("Log file %s contains keyword %s which is not expected." % (log_file, keyword)))
+                self.fail(("Log file %s contains keyword %s which is not "
+                           "expected." % (log_file, keyword)))
 
     def setUp(self):
         # Override the per-test setUp to avoid wiping etcd; instead only clean up the data we
@@ -314,14 +314,15 @@ class TestFelixConfig(TestBase):
     def run_failsafe(self, failsafe, expect_access):
         for k in failsafe:
             for port in failsafe[k]:
-                if port != 179: # port is already open by bird.
+                if port != 179:  # port is already open by bird.
                     self.open_port(self.host1, port, k)
 
         for k in failsafe:
             for port in failsafe[k]:
                 self.check_access_retry(expect_access, self.host2, self.host1, port, k)
 
-    def open_port(self, host, port, protocal="tcp"):
+    @staticmethod
+    def open_port(host, port, protocal="tcp"):
         protocal_opt = "-u" if protocal == "udp" else ""
         cmd = "nc -l %s -p %s -e /bin/sh" % (protocal_opt, port)
         host.execute(cmd, raise_exception_on_failure=True, daemon_mode=True)
@@ -339,13 +340,17 @@ class TestFelixConfig(TestBase):
                 time.sleep(1)
         self.fail(("check access failed!%s", msg))
 
-    def check_access(self, expect_access, host_src, host_target, port, protocal="tcp"):
-        protocal_opt = "-u" if protocal == "udp" else ""
-        cmd = "echo \"hostname && exit\" | timeout -t 3 nc %s -w 1 %s %s" % (protocal_opt, host_target.ip, port)
+    @staticmethod
+    def check_access(expect_access, host_src, host_target, port, protocal="tcp"):
+        protocol_opt = "-u" if protocal == "udp" else ""
+        cmd = "echo \"hostname && exit\" | timeout -t 3 nc %s -w 1 %s %s" % \
+              (protocol_opt, host_target.ip, port)
         remote_hostname = host_src.execute(cmd, raise_exception_on_failure=False)
         hostname = host_target.execute("hostname")
-        _log.info("check access from %s to %s:%s %s, result is |%s|, target hostname |%s|, expect access %s",
-                  host_src.ip, host_target.ip, port, protocal, remote_hostname, hostname, expect_access)
+        _log.info("check access from %s to %s:%s %s, result is |%s|, "
+                  "target hostname |%s|, expect access %s",
+                  host_src.ip, host_target.ip, port, protocal,
+                  remote_hostname, hostname, expect_access)
 
         # If port is 179, we are talking to bird.
         # If bird returns with a valid string, this means connection is successful.
@@ -353,7 +358,7 @@ class TestFelixConfig(TestBase):
             remote_hostname = hostname
 
         result = (hostname == remote_hostname)
-        return (result == expect_access)
+        return result == expect_access
 
     def add_policy(self, policy_data):
         self._apply_resources(policy_data, self.host1)
@@ -403,4 +408,3 @@ class TestFelixConfig(TestBase):
             "docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' %s" %
             container_name)
         return ip.strip()
-
