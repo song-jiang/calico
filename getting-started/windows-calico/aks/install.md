@@ -1,8 +1,8 @@
-# Install Calico for Windows on AKS
+# Install Calico for Windows on AKS [Working in Progress]
 
 This directory contains files to install Calico on AKS Windows nodes.
 
-## Procedure
+## Procedures
 
 1. Create AKS cluster with `--network-plugin azure --network-policy calico`.
 
@@ -22,7 +22,7 @@ az aks create \
     --network-policy calico
 ```
 
-2. Following https://docs.microsoft.com/en-us/azure/aks/windows-container-cli to add Windows Server node pool. Your may want to enable creatinga public-ip for Windows node if you want to connect it via RDP directly. 
+2. Following https://docs.microsoft.com/en-us/azure/aks/windows-container-cli to add Windows server node pool. Your may want to enable creating public-ip for Windows node if you want to connect it via RDP directly. 
 
 3. Following https://docs.microsoft.com/en-us/azure/aks/rdp to setup RDP connection with your Windows server.
 
