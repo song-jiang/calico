@@ -104,7 +104,7 @@ static long (*bpf_probe_read)(void *dst, __u32 size, const void *unsafe_ptr) = (
  * Returns
  * 	Current *ktime*.
  */
-static __u64 (*bpf_ktime_get_ns)(void) = (void *) 5;
+static __u64 (*bpf_ktime_get_ns)(void) = (void *) 7;
 
 /*
  * bpf_trace_printk
@@ -317,7 +317,7 @@ static long (*bpf_l4_csum_replace)(struct __sk_buff *skb, __u32 offset, __u64 fr
  * Returns
  * 	0 on success, or a negative error in case of failure.
  */
-static long (*bpf_tail_call)(void *ctx, void *prog_array_map, __u32 index) = (void *) 12;
+static long (*bpf_tail_call)(void *ctx, void *prog_array_map, __u32 index) = (void *) 5;
 
 /*
  * bpf_clone_redirect

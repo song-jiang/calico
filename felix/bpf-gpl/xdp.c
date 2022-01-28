@@ -26,6 +26,10 @@
 #include "jump.h"
 #include "metadata.h"
 
+static CALI_BPF_INLINE int dummy_xdp2tc_set_metadata(struct xdp_md *xdp, __u32 flags) {
+    return 1;
+}
+
 /* calico_xdp is the main function used in all of the xdp programs */
 static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 {
@@ -117,7 +121,7 @@ int calico_xdp_accepted_entrypoint(struct xdp_md *xdp)
 {
 	CALI_DEBUG("Entering calico_xdp_accepted_entrypoint\n");
 	// Share with TC the packet is already accepted and accept it there too.
-	if (xdp2tc_set_metadata(xdp, CALI_META_ACCEPTED_BY_XDP)) {
+	if (dummy_xdp2tc_set_metadata(xdp, CALI_META_ACCEPTED_BY_XDP)) {
 		CALI_DEBUG("Failed to set metadata for TC\n");
 	}
 	return XDP_PASS;
