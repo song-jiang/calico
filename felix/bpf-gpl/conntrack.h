@@ -5,7 +5,7 @@
 #ifndef __CALI_CONNTRACK_H__
 #define __CALI_CONNTRACK_H__
 
-#include <linux/in.h>
+//#include <linux/in.h>
 #include "nat.h"
 #include "bpf.h"
 #include "icmp.h"

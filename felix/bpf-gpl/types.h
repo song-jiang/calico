@@ -5,14 +5,6 @@
 #ifndef __CALI_BPF_TYPES_H__
 #define __CALI_BPF_TYPES_H__
 
-#include <linux/types.h>
-#include <linux/bpf.h>
-#include <linux/pkt_cls.h>
-#include <linux/ip.h>
-#include <linux/tcp.h>
-#include <linux/icmp.h>
-#include <linux/in.h>
-#include <linux/udp.h>
 #include "bpf.h"
 #include "arp.h"
 #include "conntrack_types.h"

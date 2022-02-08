@@ -5,19 +5,46 @@
 #ifndef __CALI_BPF_H__
 #define __CALI_BPF_H__
 
-#include <linux/types.h>
-#include <linux/bpf.h>
-#include <bpf_helpers.h>   /* For bpf_xxx helper functions. */
-#include <bpf_endian.h>    /* For bpf_ntohX etc. */
+//#include <linux/bpf.h>
+//#include <linux/types.h>
+#include <bpf_endian.h>
 #include <stddef.h>
-#include <linux/ip.h>
 #include "globals.h"
+
+/* Windows definitions */
+#define iphdr _IPV4_HEADER
+#define __BPFTOOL_LOADER__
+#define bpf_map_def_extended _ebpf_map_definition_in_file
+
+typedef int16_t __s16;
+typedef int32_t __s32;
+
+typedef uint8_t __u8;
+typedef uint16_t __u16;
+typedef uint32_t __u32;
+typedef uint64_t __u64;
+typedef uint32_t pid_t;
+
+//nat_type.h
+/* Key of an a BPF_MAP_TYPE_LPM_TRIE entry */
+struct bpf_lpm_trie_key {
+	__u32	prefixlen;	/* up to 32 for AF_INET, 128 for AF_INET6 */
+	__u8	data[0];	/* Arbitrary size */
+};
+
+//parsing.h
+#define PARSING_OK 0
+#define PARSING_ERROR -1
+#define PARSING_ALLOW_WITHOUT_ENFORCING_POLICY -2
+
+// Done
 
 #define CALI_BPF_INLINE inline __attribute__((always_inline))
 
 #define BPF_REDIR_EGRESS 0
 #define BPF_REDIR_INGRESS 1
 
+/*
 struct bpf_map_def_extended {
 	__u32 type;
 	__u32 key_size;
@@ -33,6 +60,7 @@ struct bpf_map_def_extended {
 	__u32 unused2;
 #endif
 };
+*/
 
 /* These constants must be kept in sync with the calculate-flags script. */
 
@@ -217,13 +245,13 @@ static CALI_BPF_INLINE _Noreturn void bpf_exit(int rc) {
 
 static CALI_BPF_INLINE void ip_dec_ttl(struct iphdr *ip)
 {
-	ip->ttl--;
+	ip->TimeToLive--;
 	/* since we change only a single byte, as per RFC-1141 we an adjust it
 	 * inline without helpers.
 	 */
-	__u32 sum = ip->check;
+	__u32 sum = ip->HeaderChecksum;
 	sum += bpf_htons(0x0100);
-	ip->check = (__be16) (sum + (sum >> 16));
+	ip->HeaderChecksum = (__be16) (sum + (sum >> 16));
 }
 
 #define ip_ttl_exceeded(ip) (CALI_F_TO_HOST && !CALI_F_TUNNEL && (ip)->ttl <= 1)
@@ -278,19 +306,19 @@ CALI_CONFIGURABLE_DEFINE(psnat_len, 0x4c545250) /* be 0x4c545250 = ACSII(PRTL) *
 #define map_symbol(name, ver) name##ver
 
 #define MAP_LOOKUP_FN(name, ver) \
-static CALI_BPF_INLINE void * name##_lookup_elem(const void* key)	\
+static CALI_BPF_INLINE void * name##_lookup_elem(void* key)	\
 {									\
 	return bpf_map_lookup_elem(&map_symbol(name, ver), key);	\
 }
 
 #define MAP_UPDATE_FN(name, ver) \
-static CALI_BPF_INLINE int name##_update_elem(const void* key, const void* value, __u64 flags)\
+static CALI_BPF_INLINE int name##_update_elem(void* key, void* value, __u64 flags)\
 {										\
 	return bpf_map_update_elem(&map_symbol(name, ver), key, value, flags);	\
 }
 
 #define MAP_DELETE_FN(name, ver) \
-static CALI_BPF_INLINE int name##_delete_elem(const void* key)	\
+static CALI_BPF_INLINE int name##_delete_elem(void* key)	\
 {									\
 	return bpf_map_delete_elem(&map_symbol(name, ver), key);	\
 }
@@ -301,7 +329,6 @@ struct bpf_map_def_extended __attribute__((section("maps"))) map_symbol(name, ve
 	.type = map_type,								\
 	.key_size = sizeof(key_type),							\
 	.value_size = sizeof(val_type),							\
-	.map_flags = flags,								\
 	.max_entries = size,								\
 	CALI_MAP_TC_EXT_PIN(pin)							\
 };											\
