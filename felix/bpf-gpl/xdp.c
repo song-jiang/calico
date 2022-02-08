@@ -2,16 +2,13 @@
 // Copyright (c) 2021 Tigera, Inc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 
-#include <linux/if_ether.h>
-#include <linux/ip.h>
-#include <linux/in.h>
-#include <linux/icmp.h>
-#include <linux/tcp.h>
-#include <linux/udp.h>
 
 // stdbool.h has no deps so it's OK to include; stdint.h pulls in parts
 // of the std lib that aren't compatible with BPF.
 #include <stdbool.h>
+
+#include "bpf_helpers.h"
+#include "ebpf.h"
 
 #include "bpf.h"
 #include "types.h"
@@ -19,12 +16,46 @@
 #include "skb.h"
 #include "routes.h"
 #include "reasons.h"
-#include "icmp.h"
-#include "fib.h"
 #include "parsing.h"
 #include "failsafe.h"
 #include "jump.h"
-#include "metadata.h"
+//#include "metadata.h"
+
+typedef struct cali_tc_state cali_tc_state_t;
+
+// declare ring buffer
+
+//ebpf_map_definition_in_file_t trace_map = {
+    //.size = sizeof(ebpf_map_definition_in_file_t), .type = BPF_MAP_TYPE_RINGBUF, .max_entries = 256 * 1024};
+#pragma clang section data = "maps"
+ebpf_map_definition_in_file_t trace_map = {
+    .size = sizeof(ebpf_map_definition_in_file_t),
+    .type = BPF_MAP_TYPE_HASH,
+    .key_size = sizeof(__be32),  //dest ip as key
+    .value_size = sizeof(cali_tc_state_t),
+    .max_entries = 1024};
+
+inline void
+update_trace_entry(__u8 flags, struct cali_tc_ctx *ctx)
+{
+    __be32 key_flags = (__be32)flags;
+	__be32 key_ip = ctx->state->ip_src;
+	struct cali_tc_state state_on_stack;
+
+	__builtin_memcpy(&state_on_stack, ctx->state, sizeof(cali_tc_state_t));
+
+	// update flags
+	state_on_stack.flags = flags;
+
+    // if key_ip is 0, do nothing
+	if (!key_ip) {
+		return;
+	}
+
+	// use key_ip
+    bpf_map_update_elem(&trace_map, &key_ip, &state_on_stack, 0);
+	return;
+}
 
 /* calico_xdp is the main function used in all of the xdp programs */
 static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
@@ -41,7 +72,7 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 	};
 
 	if (!ctx.state) {
-		CALI_DEBUG("State map lookup failed: PASS\n");
+		//CALI_DEBUG("State map lookup failed: PASS\n");
 		return XDP_PASS; // TODO: Adjust base on the design
 	}
 
@@ -51,6 +82,8 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 		ctx.state->prog_start_time = bpf_ktime_get_ns();
 	}
 
+	(void)update_trace_entry(1, &ctx);
+
 	// Parse packets and drop malformed and unsupported ones
 	switch (parse_packet_ip(&ctx)) {
 	case PARSING_ERROR:
@@ -58,6 +91,8 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 	case PARSING_ALLOW_WITHOUT_ENFORCING_POLICY:
 		goto allow;
 	}
+
+	(void)update_trace_entry(2, &ctx);
 
 	tc_state_fill_from_iphdr(&ctx);
 
@@ -68,11 +103,14 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 		goto allow;
 	}
 
+	(void)update_trace_entry(3, &ctx);
+
+	/*
 	// Skip XDP policy, and hence fall through to TC processing, if packet hits an
 	// entry in the inbound ports failsafe map.  The point here is that flows through
 	// configured failsafe ports should be allowed and NOT be accidentally untracked.
 	if (is_failsafe_in(ctx.state->ip_proto, ctx.state->dport, ctx.state->ip_src)) {
-		CALI_DEBUG("Inbound failsafe port: %d. Skip policy\n", ctx.state->dport);
+		//CALI_DEBUG("Inbound failsafe port: %d. Skip policy\n", ctx.state->dport);
 		ctx.state->pol_rc = CALI_POL_ALLOW;
 		goto allow;
 	}
@@ -85,19 +123,23 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 	// to the TC program, which will then check that it matches a known outbound
 	// conntrack state.
 	if (is_failsafe_out(ctx.state->ip_proto, ctx.state->sport, ctx.state->ip_src)) {
-		CALI_DEBUG("Outbound failsafe port: %d. Skip policy\n", ctx.state->sport);
+		//CALI_DEBUG("Outbound failsafe port: %d. Skip policy\n", ctx.state->sport);
 		ctx.state->pol_rc = CALI_POL_ALLOW;
 		goto allow;
 	}
+	*/
 
 	// Jump to the policy program
-	CALI_DEBUG("About to jump to policy program.\n");
-	bpf_tail_call(xdp, &cali_jump, PROG_INDEX_POLICY);
+	//CALI_DEBUG("About to jump to policy program.\n");
+	//bpf_tail_call(xdp, &cali_jump, PROG_INDEX_POLICY);
+	//bpf_tail_call(xdp, &cali_jump, 7);
 
 allow:
+	(void)update_trace_entry(8, &ctx);
 	return XDP_PASS;
 
 deny:
+	(void)update_trace_entry(9, &ctx);
 	return XDP_DROP;
 }
 
@@ -105,23 +147,28 @@ deny:
  * which ip will load for us when we're attaching a program to a xdp hook.
  * This allows us to control the behaviour in the window before Felix replaces
  * the policy program with its generated version.*/
-__attribute__((section("1/0")))
+
+/*
+__attribute__((section("calico_entrypoint_xdp/0")))
 int calico_xdp_norm_pol_tail(struct xdp_md *xdp)
 {
-	CALI_DEBUG("Entering normal policy tail call: PASS\n");
+	//CALI_DEBUG("Entering normal policy tail call: PASS\n");
 	return XDP_PASS;
 }
+*/
 
-__attribute__((section("1/1")))
+/*
+__attribute__((section("calico_entrypoint_xdp/1")))
 int calico_xdp_accepted_entrypoint(struct xdp_md *xdp)
 {
-	CALI_DEBUG("Entering calico_xdp_accepted_entrypoint\n");
+	//CALI_DEBUG("Entering calico_xdp_accepted_entrypoint\n");
 	// Share with TC the packet is already accepted and accept it there too.
-	if (xdp2tc_set_metadata(xdp, CALI_META_ACCEPTED_BY_XDP)) {
-		CALI_DEBUG("Failed to set metadata for TC\n");
-	}
+	//if (xdp2tc_set_metadata(xdp, CALI_META_ACCEPTED_BY_XDP)) {
+		//CALI_DEBUG("Failed to set metadata for TC\n");
+	//}
 	return XDP_PASS;
 }
+*/
 
 #ifndef CALI_ENTRYPOINT_NAME_XDP
 #define CALI_ENTRYPOINT_NAME_XDP calico_entrypoint_xdp

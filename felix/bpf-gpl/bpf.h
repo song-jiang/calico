@@ -5,19 +5,109 @@
 #ifndef __CALI_BPF_H__
 #define __CALI_BPF_H__
 
-#include <linux/types.h>
-#include <linux/bpf.h>
-#include <bpf_helpers.h>   /* For bpf_xxx helper functions. */
-#include <bpf_endian.h>    /* For bpf_ntohX etc. */
+//#include <linux/bpf.h>
+//#include <linux/types.h>
+#include <bpf_endian.h>
 #include <stddef.h>
-#include <linux/ip.h>
 #include "globals.h"
+
+// TODO FIXME
+typedef __u16 __sum16;
+
+typedef int16_t __s16;
+typedef int32_t __s32;
+
+typedef uint8_t __u8;
+typedef uint16_t __u16;
+typedef uint32_t __u32;
+typedef uint64_t __u64;
+typedef uint32_t pid_t;
+
+struct tcphdr {
+	__be16	source;
+	__be16	dest;
+	__be32	seq;
+	__be32	ack_seq;
+	__u16   todo_flags;
+	__be16	window;
+	__sum16	check;
+	__be16	urg_ptr;
+};
+
+// https://elixir.bootlin.com/linux/v5.13/source/include/uapi/linux/icmp.h
+struct icmphdr {
+  __u8		type;
+  __u8		code;
+  __sum16	checksum;
+  union {
+	struct {
+		__be16	id;
+		__be16	sequence;
+	} echo;
+	__be32	gateway;
+	struct {
+		__be16	__unused;
+		__be16	mtu;
+	} frag;
+	__u8	reserved[4];
+  } un;
+};
+
+/* Windows definitions */
+#define iphdr _IPV4_HEADER
+#define ethhdr _ETHERNET_HEADER
+#define udphdr UDP_HEADER_
+
+// https://elixir.bootlin.com/linux/v5.13/source/include/uapi/linux/ip.h#L86
+
+#define IPHDR_IHL(x) x->HeaderLength
+#define IPHDR_PROTO(x) x->Protocol
+#define IPHDR_SRC(x) x->SourceAddress
+#define IPHDR_DEST(x) x->DestinationAddress
+#define IPHDR_ID(x) x->Identification
+#define IPHDR_TOL(x) x->TotalLength
+
+
+// https://elixir.bootlin.com/linux/v5.13/source/include/uapi/linux/if_ether.h
+#define ETH_P_IP ETHERNET_TYPE_IPV4
+#define ETH_P_IPV6 ETHERNET_TYPE_IPV6
+#define ETH_P_ARP 0x0806
+
+#define ETHHDR_PROTO(x) x->Type
+
+#define IPPROTO_ICMP 1
+#define IPPROTO_TCP 6
+#define IPPROTO_IPIP 94
+
+#define UDPHDR_SRC_PORT(x) x->srcPort
+#define UDPHDR_DEST_PORT(x) x->destPort
+
+
+ 
+#define __BPFTOOL_LOADER__
+#define bpf_map_def_extended _ebpf_map_definition_in_file
+
+
+//nat_type.h
+/* Key of an a BPF_MAP_TYPE_LPM_TRIE entry */
+struct bpf_lpm_trie_key {
+	__u32	prefixlen;	/* up to 32 for AF_INET, 128 for AF_INET6 */
+	__u8	data[0];	/* Arbitrary size */
+};
+
+//parsing.h
+#define PARSING_OK 0
+#define PARSING_ERROR -1
+#define PARSING_ALLOW_WITHOUT_ENFORCING_POLICY -2
+
+// Done on Windows
 
 #define CALI_BPF_INLINE inline __attribute__((always_inline))
 
 #define BPF_REDIR_EGRESS 0
 #define BPF_REDIR_INGRESS 1
 
+/*
 struct bpf_map_def_extended {
 	__u32 type;
 	__u32 key_size;
@@ -33,6 +123,7 @@ struct bpf_map_def_extended {
 	__u32 unused2;
 #endif
 };
+*/
 
 /* These constants must be kept in sync with the calculate-flags script. */
 
@@ -65,7 +156,7 @@ struct bpf_map_def_extended {
 #endif
 
 #ifndef CALI_COMPILE_FLAGS
-#define CALI_COMPILE_FLAGS 0
+#define CALI_COMPILE_FLAGS CALI_XDP_PROG
 #endif
 
 #define CALI_F_INGRESS ((CALI_COMPILE_FLAGS) & CALI_TC_INGRESS)
@@ -217,13 +308,13 @@ static CALI_BPF_INLINE _Noreturn void bpf_exit(int rc) {
 
 static CALI_BPF_INLINE void ip_dec_ttl(struct iphdr *ip)
 {
-	ip->ttl--;
+	ip->TimeToLive--;
 	/* since we change only a single byte, as per RFC-1141 we an adjust it
 	 * inline without helpers.
 	 */
-	__u32 sum = ip->check;
+	__u32 sum = ip->HeaderChecksum;
 	sum += bpf_htons(0x0100);
-	ip->check = (__be16) (sum + (sum >> 16));
+	ip->HeaderChecksum = (__be16) (sum + (sum >> 16));
 }
 
 #define ip_ttl_exceeded(ip) (CALI_F_TO_HOST && !CALI_F_TUNNEL && (ip)->ttl <= 1)
@@ -278,19 +369,19 @@ CALI_CONFIGURABLE_DEFINE(psnat_len, 0x4c545250) /* be 0x4c545250 = ACSII(PRTL) *
 #define map_symbol(name, ver) name##ver
 
 #define MAP_LOOKUP_FN(name, ver) \
-static CALI_BPF_INLINE void * name##_lookup_elem(const void* key)	\
+static CALI_BPF_INLINE void * name##_lookup_elem(void* key)	\
 {									\
 	return bpf_map_lookup_elem(&map_symbol(name, ver), key);	\
 }
 
 #define MAP_UPDATE_FN(name, ver) \
-static CALI_BPF_INLINE int name##_update_elem(const void* key, const void* value, __u64 flags)\
+static CALI_BPF_INLINE int name##_update_elem(void* key, void* value, __u64 flags)\
 {										\
 	return bpf_map_update_elem(&map_symbol(name, ver), key, value, flags);	\
 }
 
 #define MAP_DELETE_FN(name, ver) \
-static CALI_BPF_INLINE int name##_delete_elem(const void* key)	\
+static CALI_BPF_INLINE int name##_delete_elem(void* key)	\
 {									\
 	return bpf_map_delete_elem(&map_symbol(name, ver), key);	\
 }
@@ -301,7 +392,6 @@ struct bpf_map_def_extended __attribute__((section("maps"))) map_symbol(name, ve
 	.type = map_type,								\
 	.key_size = sizeof(key_type),							\
 	.value_size = sizeof(val_type),							\
-	.map_flags = flags,								\
 	.max_entries = size,								\
 	CALI_MAP_TC_EXT_PIN(pin)							\
 };											\

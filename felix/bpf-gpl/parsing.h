@@ -9,6 +9,9 @@
 #define PARSING_ERROR -1
 #define PARSING_ALLOW_WITHOUT_ENFORCING_POLICY -2
 
+
+
+
 static CALI_BPF_INLINE int parse_packet_ip(struct cali_tc_ctx *ctx) {
 	__u16 protocol = 0;
 
@@ -26,9 +29,9 @@ static CALI_BPF_INLINE int parse_packet_ip(struct cali_tc_ctx *ctx) {
 			CALI_DEBUG("Too short\n");
 			goto deny;
 		}
-		protocol = bpf_ntohs(tc_ethhdr(ctx)->h_proto);
+		protocol = bpf_ntohs(ETHHDR_PROTO(tc_ethhdr(ctx)));
 	} else {
-		protocol = bpf_ntohs(ctx->skb->protocol);
+		// protocol = bpf_ntohs(ctx->skb->protocol);
 	}
 
 	switch (protocol) {
@@ -68,15 +71,15 @@ static CALI_BPF_INLINE int parse_packet_ip(struct cali_tc_ctx *ctx) {
 	}
 
 	// Drop malformed IP packets
-	if (ctx->ip_header->ihl < 5) {
+	if (IPHDR_IHL(ctx->ip_header) < 5) {
 		ctx->fwd.reason = CALI_REASON_IP_MALFORMED;
 		CALI_DEBUG("Drop malformed IP packets\n");
 		goto deny;
-	} else if (ctx->ip_header->ihl > 5) {
+	} else if (IPHDR_IHL(ctx->ip_header) > 5) {
 		/* Drop packets with IP options from/to WEP.
 		 * Also drop packets with IP options if the dest IP is not host IP
 		 */
-		if (CALI_F_WEP || (CALI_F_FROM_HEP && !rt_addr_is_local_host(ctx->ip_header->daddr))) {
+		if (CALI_F_WEP || (CALI_F_FROM_HEP && !rt_addr_is_local_host(IPHDR_DEST(ctx->ip_header)))) {
 			ctx->fwd.reason = CALI_REASON_IP_OPTIONS;
 			CALI_DEBUG("Drop packets with IP options\n");
 			goto deny;
@@ -96,11 +99,11 @@ deny:
 
 static CALI_BPF_INLINE void tc_state_fill_from_iphdr(struct cali_tc_ctx *ctx)
 {
-	ctx->state->ip_src = ctx->ip_header->saddr;
-	ctx->state->ip_dst = ctx->ip_header->daddr;
-	ctx->state->pre_nat_ip_dst = ctx->ip_header->daddr;
-	ctx->state->ip_proto = ctx->ip_header->protocol;
-	ctx->state->ip_size = ctx->ip_header->tot_len;
+	ctx->state->ip_src = IPHDR_SRC(ctx->ip_header);
+	ctx->state->ip_dst = IPHDR_DEST(ctx->ip_header);
+	ctx->state->pre_nat_ip_dst = IPHDR_DEST(ctx->ip_header);
+	ctx->state->ip_proto = IPHDR_PROTO(ctx->ip_header);
+	ctx->state->ip_size = IPHDR_TOL(ctx->ip_header);
 }
 
 /* Continue parsing packet based on the IP protocol and fill in relevant fields
@@ -121,10 +124,10 @@ static CALI_BPF_INLINE int tc_state_fill_from_nexthdr(struct cali_tc_ctx *ctx)
 		CALI_DEBUG("TCP; ports: s=%d d=%d\n", ctx->state->sport, ctx->state->dport);
 		break;
 	case IPPROTO_UDP:
-		ctx->state->sport = bpf_ntohs(tc_udphdr(ctx)->source);
-		ctx->state->dport = bpf_ntohs(tc_udphdr(ctx)->dest);
-		ctx->state->pre_nat_dport = ctx->state->dport;
-		CALI_DEBUG("UDP; ports: s=%d d=%d\n", ctx->state->sport, ctx->state->dport);
+		ctx->state->sport = bpf_ntohs(UDPHDR_SRC_PORT(tc_udphdr(ctx)));
+		ctx->state->dport = bpf_ntohs(UDPHDR_DEST_PORT(tc_udphdr(ctx)));
+		ctx->state->pre_nat_dport = UDPHDR_DEST_PORT(tc_udphdr(ctx));
+		//CALI_DEBUG("UDP; ports: s=%d d=%d\n", ctx->state->sport, ctx->state->dport);
 		if (ctx->state->dport == VXLAN_PORT) {
 			/* CALI_F_FROM_HEP case is handled in vxlan_attempt_decap above since it already decoded
 			 * the header. */

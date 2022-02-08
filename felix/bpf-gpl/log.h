@@ -20,9 +20,15 @@
 
 #define CALI_USE_LINUX_FIB true
 
+/*
 #define CALI_LOG(__fmt, ...) do { \
 		char fmt[] = __fmt; \
 		bpf_trace_printk(fmt, sizeof(fmt), ## __VA_ARGS__); \
+} while (0)
+*/
+
+#define CALI_LOG(__fmt, ...) do { \
+		char fmt[] = __fmt; \
 } while (0)
 
 #define CALI_INFO_NO_FLAG(fmt, ...)  CALI_LOG_IF(CALI_LOG_LEVEL_INFO, fmt, ## __VA_ARGS__)

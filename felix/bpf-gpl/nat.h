@@ -7,12 +7,12 @@
 
 #include <stddef.h>
 
-#include <linux/if_ether.h>
-#include <linux/udp.h>
+//#include <linux/if_ether.h>
+//#include <linux/udp.h>
 
 #include "bpf.h"
-#include "skb.h"
-#include "routes.h"
+//#include "skb.h"
+//#include "routes.h"
 #include "nat_types.h"
 
 #ifndef CALI_VXLAN_VNI
