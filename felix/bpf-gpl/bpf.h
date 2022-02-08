@@ -11,10 +11,8 @@
 #include <stddef.h>
 #include "globals.h"
 
-/* Windows definitions */
-#define iphdr _IPV4_HEADER
-#define __BPFTOOL_LOADER__
-#define bpf_map_def_extended _ebpf_map_definition_in_file
+// TODO FIXME
+typedef __u16 __sum16;
 
 typedef int16_t __s16;
 typedef int32_t __s32;
@@ -24,6 +22,71 @@ typedef uint16_t __u16;
 typedef uint32_t __u32;
 typedef uint64_t __u64;
 typedef uint32_t pid_t;
+
+struct tcphdr {
+	__be16	source;
+	__be16	dest;
+	__be32	seq;
+	__be32	ack_seq;
+	__u16   todo_flags;
+	__be16	window;
+	__sum16	check;
+	__be16	urg_ptr;
+};
+
+// https://elixir.bootlin.com/linux/v5.13/source/include/uapi/linux/icmp.h
+struct icmphdr {
+  __u8		type;
+  __u8		code;
+  __sum16	checksum;
+  union {
+	struct {
+		__be16	id;
+		__be16	sequence;
+	} echo;
+	__be32	gateway;
+	struct {
+		__be16	__unused;
+		__be16	mtu;
+	} frag;
+	__u8	reserved[4];
+  } un;
+};
+
+/* Windows definitions */
+#define iphdr _IPV4_HEADER
+#define ethhdr _ETHERNET_HEADER
+#define udphdr UDP_HEADER_
+
+// https://elixir.bootlin.com/linux/v5.13/source/include/uapi/linux/ip.h#L86
+
+#define IPHDR_IHL(x) x->HeaderLength
+#define IPHDR_PROTO(x) x->Protocol
+#define IPHDR_SRC(x) x->SourceAddress
+#define IPHDR_DEST(x) x->DestinationAddress
+#define IPHDR_ID(x) x->Identification
+#define IPHDR_TOL(x) x->TotalLength
+
+
+// https://elixir.bootlin.com/linux/v5.13/source/include/uapi/linux/if_ether.h
+#define ETH_P_IP ETHERNET_TYPE_IPV4
+#define ETH_P_IPV6 ETHERNET_TYPE_IPV6
+#define ETH_P_ARP 0x0806
+
+#define ETHHDR_PROTO(x) x->Type
+
+#define IPPROTO_ICMP 1
+#define IPPROTO_TCP 6
+#define IPPROTO_IPIP 94
+
+#define UDPHDR_SRC_PORT(x) x->srcPort
+#define UDPHDR_DEST_PORT(x) x->destPort
+
+
+ 
+#define __BPFTOOL_LOADER__
+#define bpf_map_def_extended _ebpf_map_definition_in_file
+
 
 //nat_type.h
 /* Key of an a BPF_MAP_TYPE_LPM_TRIE entry */
@@ -93,7 +156,7 @@ struct bpf_map_def_extended {
 #endif
 
 #ifndef CALI_COMPILE_FLAGS
-#define CALI_COMPILE_FLAGS 0
+#define CALI_COMPILE_FLAGS CALI_XDP_PROG
 #endif
 
 #define CALI_F_INGRESS ((CALI_COMPILE_FLAGS) & CALI_TC_INGRESS)

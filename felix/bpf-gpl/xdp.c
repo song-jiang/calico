@@ -13,8 +13,10 @@
 #include "bpf.h"
 #include "types.h"
 #include "log.h"
+#include "skb.h"
+#include "routes.h"
 #include "reasons.h"
-//#include "parsing.h"
+#include "parsing.h"
 #include "failsafe.h"
 #include "jump.h"
 //#include "metadata.h"
@@ -44,7 +46,6 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 		ctx.state->prog_start_time = bpf_ktime_get_ns();
 	}
 
-	/*
 	// Parse packets and drop malformed and unsupported ones
 	switch (parse_packet_ip(&ctx)) {
 	case PARSING_ERROR:
@@ -62,6 +63,7 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 		goto allow;
 	}
 
+	/*
 	// Skip XDP policy, and hence fall through to TC processing, if packet hits an
 	// entry in the inbound ports failsafe map.  The point here is that flows through
 	// configured failsafe ports should be allowed and NOT be accidentally untracked.
