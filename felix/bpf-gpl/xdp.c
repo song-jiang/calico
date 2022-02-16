@@ -111,6 +111,7 @@ int calico_xdp_norm_pol_tail(struct xdp_md *xdp)
 	return XDP_PASS;
 }
 
+/*
 __attribute__((section("calico_entrypoint_xdp/1")))
 int calico_xdp_accepted_entrypoint(struct xdp_md *xdp)
 {
@@ -121,6 +122,7 @@ int calico_xdp_accepted_entrypoint(struct xdp_md *xdp)
 	//}
 	return XDP_PASS;
 }
+*/
 
 #ifndef CALI_ENTRYPOINT_NAME_XDP
 #define CALI_ENTRYPOINT_NAME_XDP calico_entrypoint_xdp
