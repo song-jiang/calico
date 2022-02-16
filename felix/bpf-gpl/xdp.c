@@ -63,6 +63,8 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 		goto allow;
 	}
 
+	(void)bpf_ringbuf_output(&trace_map, ctx->state, sizeof(struct cali_tc_state), 0);
+
 	/*
 	// Skip XDP policy, and hence fall through to TC processing, if packet hits an
 	// entry in the inbound ports failsafe map.  The point here is that flows through

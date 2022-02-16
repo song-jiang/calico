@@ -100,7 +100,12 @@ struct bpf_lpm_trie_key {
 #define PARSING_ERROR -1
 #define PARSING_ALLOW_WITHOUT_ENFORCING_POLICY -2
 
-// Done
+// declare ring buffer
+#pragma clang section data = "maps"
+ebpf_map_definition_in_file_t trace_map = {
+    .size = sizeof(ebpf_map_definition_in_file_t), .type = BPF_MAP_TYPE_RINGBUF, .max_entries = 256 * 1024};
+
+// Done on Windows
 
 #define CALI_BPF_INLINE inline __attribute__((always_inline))
 
