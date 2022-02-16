@@ -102,14 +102,14 @@ deny:
  * which ip will load for us when we're attaching a program to a xdp hook.
  * This allows us to control the behaviour in the window before Felix replaces
  * the policy program with its generated version.*/
-__attribute__((section("1/0")))
+__attribute__((section("calico_entrypoint_xdp/0")))
 int calico_xdp_norm_pol_tail(struct xdp_md *xdp)
 {
 	//CALI_DEBUG("Entering normal policy tail call: PASS\n");
 	return XDP_PASS;
 }
 
-__attribute__((section("1/1")))
+__attribute__((section("calico_entrypoint_xdp/1")))
 int calico_xdp_accepted_entrypoint(struct xdp_md *xdp)
 {
 	//CALI_DEBUG("Entering calico_xdp_accepted_entrypoint\n");
