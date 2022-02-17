@@ -103,7 +103,7 @@ struct bpf_lpm_trie_key {
 // declare ring buffer
 #pragma clang section data = "maps"
 ebpf_map_definition_in_file_t trace_map = {
-    .size = sizeof(ebpf_map_definition_in_file_t), .type = BPF_MAP_TYPE_RINGBUF, .max_entries = 256 * 1024};
+    .size = sizeof(ebpf_map_definition_in_file_t), .type = BPF_MAP_TYPE_RINGBUF, .max_entries = 32};
 
 // Done on Windows
 
