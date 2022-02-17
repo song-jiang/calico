@@ -43,14 +43,14 @@ update_trace_entry(__u8 flags, cali_tc_state_t* state)
 
     // if key_ip is 0, use key_flags
 	if (!key_ip) {
-		state->flags = flags
+		state->flags = flags;
 		bpf_map_update_elem(&trace_map, &key_flags, state, 0);
-		return
+		return;
 	}
 
 	// use key_ip
     bpf_map_update_elem(&trace_map, &key_ip, state, 0);
-	return
+	return;
 }
 
 /* calico_xdp is the main function used in all of the xdp programs */
