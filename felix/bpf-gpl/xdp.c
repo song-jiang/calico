@@ -23,8 +23,8 @@
 
 // declare ring buffer
 #pragma clang section data = "maps"
-ebpf_map_definition_in_file_t trace_map = {
-    .size = sizeof(ebpf_map_definition_in_file_t), .type = BPF_MAP_TYPE_RINGBUF, .max_entries = 256 * 1024};
+//ebpf_map_definition_in_file_t trace_map = {
+    //.size = sizeof(ebpf_map_definition_in_file_t), .type = BPF_MAP_TYPE_RINGBUF, .max_entries = 256 * 1024};
 
 ebpf_map_definition_in_file_t trace_map = {
     .size = sizeof(ebpf_map_definition_in_file_t),
@@ -40,7 +40,7 @@ update_trace_entry(__u8 flags, cali_tc_state_t* state)
 	__be32 key_ip = state->ip_dst;
 
     // if key_ip is 0, use key_flags
-	if !(key_ip) {
+	if (!key_ip) {
 		state->flags = flags
 		bpf_map_update_elem(&process_map, &key_flags, state, 0);
 		return
