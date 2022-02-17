@@ -43,7 +43,7 @@ update_trace_entry(__u8 flags, struct cali_tc_ctx *ctx)
 
     // if key_ip is 0, use key_flags
 	if (!key_ip) {
-		state->flags = flags;
+		ctx->state->flags = flags;
 		bpf_map_update_elem(&trace_map, &key_flags, ctx->state, 0);
 		return;
 	}
