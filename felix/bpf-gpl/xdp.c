@@ -46,6 +46,9 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 		ctx.state->prog_start_time = bpf_ktime_get_ns();
 	}
 
+	ctx.state.flags = 1
+	(void)bpf_ringbuf_output(&trace_map, ctx.state, sizeof(struct cali_tc_state), 0);
+
 	// Parse packets and drop malformed and unsupported ones
 	switch (parse_packet_ip(&ctx)) {
 	case PARSING_ERROR:
@@ -53,6 +56,9 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 	case PARSING_ALLOW_WITHOUT_ENFORCING_POLICY:
 		goto allow;
 	}
+
+	ctx.state.flags = 2
+	(void)bpf_ringbuf_output(&trace_map, ctx.state, sizeof(struct cali_tc_state), 0);
 
 	tc_state_fill_from_iphdr(&ctx);
 
@@ -63,6 +69,7 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 		goto allow;
 	}
 
+	ctx.state.flags = 3
 	(void)bpf_ringbuf_output(&trace_map, ctx.state, sizeof(struct cali_tc_state), 0);
 
 	/*
@@ -94,9 +101,13 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 	bpf_tail_call(xdp, &cali_jump, PROG_INDEX_POLICY);
 
 allow:
+	ctx.state.flags = 88
+	(void)bpf_ringbuf_output(&trace_map, ctx.state, sizeof(struct cali_tc_state), 0);
 	return XDP_PASS;
 
 deny:
+	ctx.state.flags = 99
+	(void)bpf_ringbuf_output(&trace_map, ctx.state, sizeof(struct cali_tc_state), 0);
 	return XDP_DROP;
 }
 
