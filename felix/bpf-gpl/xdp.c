@@ -99,7 +99,7 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 	// Jump to the policy program
 	//CALI_DEBUG("About to jump to policy program.\n");
 	//bpf_tail_call(xdp, &cali_jump, PROG_INDEX_POLICY);
-	bpf_tail_call(xdp, &cali_jump, 7);
+	//bpf_tail_call(xdp, &cali_jump, 7);
 
 allow:
 	ctx.state->flags = 88;
@@ -116,12 +116,15 @@ deny:
  * which ip will load for us when we're attaching a program to a xdp hook.
  * This allows us to control the behaviour in the window before Felix replaces
  * the policy program with its generated version.*/
+
+/*
 __attribute__((section("calico_entrypoint_xdp/0")))
 int calico_xdp_norm_pol_tail(struct xdp_md *xdp)
 {
 	//CALI_DEBUG("Entering normal policy tail call: PASS\n");
 	return XDP_PASS;
 }
+*/
 
 /*
 __attribute__((section("calico_entrypoint_xdp/1")))
