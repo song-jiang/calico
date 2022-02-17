@@ -98,7 +98,8 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 
 	// Jump to the policy program
 	//CALI_DEBUG("About to jump to policy program.\n");
-	bpf_tail_call(xdp, &cali_jump, PROG_INDEX_POLICY);
+	//bpf_tail_call(xdp, &cali_jump, PROG_INDEX_POLICY);
+	bpf_tail_call(xdp, &cali_jump, 7);
 
 allow:
 	ctx.state->flags = 88;
