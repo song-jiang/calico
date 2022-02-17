@@ -21,6 +21,8 @@
 #include "jump.h"
 //#include "metadata.h"
 
+typedef struct cali_tc_state cali_tc_state_t;
+
 // declare ring buffer
 
 //ebpf_map_definition_in_file_t trace_map = {
