@@ -21,6 +21,36 @@
 #include "jump.h"
 //#include "metadata.h"
 
+// declare ring buffer
+#pragma clang section data = "maps"
+ebpf_map_definition_in_file_t trace_map = {
+    .size = sizeof(ebpf_map_definition_in_file_t), .type = BPF_MAP_TYPE_RINGBUF, .max_entries = 256 * 1024};
+
+ebpf_map_definition_in_file_t trace_map = {
+    .size = sizeof(ebpf_map_definition_in_file_t),
+    .type = BPF_MAP_TYPE_HASH,
+    .key_size = sizeof(__be32),  //dest ip as key
+    .value_size = sizeof(cali_tc_state_t),
+    .max_entries = 1024};
+
+inline void
+update_trace_entry(__u8 flags, cali_tc_state_t* state)
+{
+    __be32 key_flags = (__be32)flags;
+	__be32 key_ip = state->ip_dst;
+
+    // if key_ip is 0, use key_flags
+	if !(key_ip) {
+		state->flags = flags
+		bpf_map_update_elem(&process_map, &key_flags, state, 0);
+		return
+	}
+
+	// use key_ip
+    bpf_map_update_elem(&trace_map, &key_ip, state, 0);
+	return
+}
+
 /* calico_xdp is the main function used in all of the xdp programs */
 static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 {
@@ -46,8 +76,7 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 		ctx.state->prog_start_time = bpf_ktime_get_ns();
 	}
 
-	ctx.state->flags = 1;
-	(void)bpf_ringbuf_output(&trace_map, ctx.state, sizeof(struct cali_tc_state), 0);
+	(void)update_trace_entry(1, ctx.state);
 
 	// Parse packets and drop malformed and unsupported ones
 	switch (parse_packet_ip(&ctx)) {
@@ -57,8 +86,7 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 		goto allow;
 	}
 
-	ctx.state->flags = 2;
-	(void)bpf_ringbuf_output(&trace_map, ctx.state, sizeof(struct cali_tc_state), 0);
+	(void)update_trace_entry(2, ctx.state);
 
 	tc_state_fill_from_iphdr(&ctx);
 
@@ -69,8 +97,7 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 		goto allow;
 	}
 
-	ctx.state->flags = 3;
-	(void)bpf_ringbuf_output(&trace_map, ctx.state, sizeof(struct cali_tc_state), 0);
+	(void)update_trace_entry(3, ctx.state);
 
 	/*
 	// Skip XDP policy, and hence fall through to TC processing, if packet hits an
@@ -102,13 +129,11 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 	//bpf_tail_call(xdp, &cali_jump, 7);
 
 allow:
-	ctx.state->flags = 88;
-	(void)bpf_ringbuf_output(&trace_map, ctx.state, sizeof(struct cali_tc_state), 0);
+	(void)update_trace_entry(8, ctx.state);
 	return XDP_PASS;
 
 deny:
-	ctx.state->flags = 99;
-	(void)bpf_ringbuf_output(&trace_map, ctx.state, sizeof(struct cali_tc_state), 0);
+	(void)update_trace_entry(9, ctx.state);
 	return XDP_DROP;
 }
 
