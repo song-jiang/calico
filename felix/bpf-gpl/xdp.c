@@ -39,17 +39,17 @@ inline void
 update_trace_entry(__u8 flags, struct cali_tc_ctx *ctx)
 {
     __be32 key_flags = (__be32)flags;
-	__be32 key_ip = state->ip_dst;
+	__be32 key_ip = ctx->state->ip_dst;
 
     // if key_ip is 0, use key_flags
 	if (!key_ip) {
 		state->flags = flags;
-		bpf_map_update_elem(&trace_map, &key_flags, ctx.state, 0);
+		bpf_map_update_elem(&trace_map, &key_flags, ctx->state, 0);
 		return;
 	}
 
 	// use key_ip
-    bpf_map_update_elem(&trace_map, &key_ip, ctx.state, 0);
+    bpf_map_update_elem(&trace_map, &key_ip, ctx->state, 0);
 	return;
 }
 
