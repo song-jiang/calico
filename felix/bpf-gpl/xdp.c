@@ -78,7 +78,7 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 		ctx.state->prog_start_time = bpf_ktime_get_ns();
 	}
 
-	(void)update_trace_entry(1, ctx.state);
+	(void)update_trace_entry(1, &ctx);
 
 	// Parse packets and drop malformed and unsupported ones
 	switch (parse_packet_ip(&ctx)) {
@@ -88,7 +88,7 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 		goto allow;
 	}
 
-	(void)update_trace_entry(2, ctx.state);
+	(void)update_trace_entry(2, &ctx);
 
 	tc_state_fill_from_iphdr(&ctx);
 
@@ -99,7 +99,7 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 		goto allow;
 	}
 
-	(void)update_trace_entry(3, ctx.state);
+	(void)update_trace_entry(3, &ctx);
 
 	/*
 	// Skip XDP policy, and hence fall through to TC processing, if packet hits an
@@ -131,11 +131,11 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 	//bpf_tail_call(xdp, &cali_jump, 7);
 
 allow:
-	(void)update_trace_entry(8, ctx.state);
+	(void)update_trace_entry(8, &ctx);
 	return XDP_PASS;
 
 deny:
-	(void)update_trace_entry(9, ctx.state);
+	(void)update_trace_entry(9, &ctx);
 	return XDP_DROP;
 }
 
