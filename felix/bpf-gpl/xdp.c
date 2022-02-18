@@ -39,7 +39,7 @@ inline void
 update_trace_entry(__u8 flags, struct cali_tc_ctx *ctx)
 {
     __be32 key_flags = (__be32)flags;
-	__be32 key_ip = ctx->state->ip_dst;
+	__be32 key_ip = ctx->state->ip_src;
 	struct cali_tc_state state_on_stack;
 
 	__builtin_memcpy(&state_on_stack, ctx->state, sizeof(cali_tc_state_t));
