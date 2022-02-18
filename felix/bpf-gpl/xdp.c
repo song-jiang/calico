@@ -44,9 +44,11 @@ update_trace_entry(__u8 flags, struct cali_tc_ctx *ctx)
 
 	__builtin_memcpy(&state_on_stack, ctx->state, sizeof(cali_tc_state_t));
 
+	// update flags
+	state_on_stack.flags = flags;
+
     // if key_ip is 0, use key_flags
 	if (!key_ip) {
-		state_on_stack.flags = flags;
 		bpf_map_update_elem(&trace_map, &key_flags, &state_on_stack, 0);
 		return;
 	}
