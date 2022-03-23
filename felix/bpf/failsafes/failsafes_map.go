@@ -20,8 +20,6 @@ import (
 	"encoding/binary"
 	"net"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/projectcalico/calico/felix/bpf"
 )
 
@@ -51,7 +49,7 @@ var MapParams = bpf.MapParameters{
 	ValueSize:  ValueSize,
 	MaxEntries: 65536,
 	Name:       "cali_v4_fsafes",
-	Flags:      unix.BPF_F_NO_PREALLOC,
+	Flags:      0x01, // unix.BPF_F_NO_PREALLOC,
 	Version:    2,
 }
 

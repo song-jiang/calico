@@ -21,25 +21,25 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"golang.org/x/sys/unix"
 )
 
 type MapFD uint32
 
 func (f MapFD) Close() error {
 	log.WithField("fd", int(f)).Debug("Closing MapFD")
-	return unix.Close(int(f))
+	return nil
 }
 
 type ProgFD uint32
 
 func (f ProgFD) Close() error {
 	log.WithField("fd", int(f)).Debug("Closing ProgFD")
-	return unix.Close(int(f))
+	return nil
 }
 
 func IsNotExists(err error) bool {
-	return err == unix.ENOENT
+	// return err == unix.ENOENT
+	return true
 }
 
 type ProgResult struct {

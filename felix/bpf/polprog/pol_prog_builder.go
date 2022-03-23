@@ -30,7 +30,6 @@ import (
 	"github.com/projectcalico/calico/felix/bpf/state"
 	"github.com/projectcalico/calico/felix/ip"
 	"github.com/projectcalico/calico/felix/proto"
-	"github.com/projectcalico/calico/felix/rules"
 )
 
 type Builder struct {
@@ -476,11 +475,15 @@ func (p *Builder) writeRule(r Rule, actionLabel string, destLeg matchLeg) {
 		log.Panic("empty action label")
 	}
 
-	rule := rules.FilterRuleToIPVersion(4, r.Rule)
+	/* TODO rule := rules.FilterRuleToIPVersion(4, r.Rule)
 	if rule == nil {
 		log.Debugf("Version mismatch, skipping rule")
 		return
 	}
+	*/
+
+	rule := r.Rule
+
 	p.writeStartOfRule()
 
 	if rule.Protocol != nil {

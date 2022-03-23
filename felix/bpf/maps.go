@@ -22,8 +22,6 @@ import (
 	"reflect"
 	"strings"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -102,7 +100,8 @@ type MapContext struct {
 }
 
 func (c *MapContext) NewPinnedMap(params MapParameters) Map {
-	if len(params.VersionedName()) >= unix.BPF_OBJ_NAME_LEN {
+	// if len(params.VersionedName()) >= unix.BPF_OBJ_NAME_LEN {
+	if len(params.VersionedName()) >= 16 {
 		logrus.WithField("name", params.Name).Panic("Bug: BPF map name too long")
 	}
 	if val, ok := c.MapSizes[params.VersionedName()]; ok {
@@ -396,47 +395,50 @@ func (b *PinnedMap) Open() error {
 	if b.fdLoaded {
 		return nil
 	}
-
-	_, err := MaybeMountBPFfs()
-	if err != nil {
-		logrus.WithError(err).Error("Failed to mount bpffs")
-		return err
-	}
-	// FIXME hard-coded dir
-	err = os.MkdirAll("/sys/fs/bpf/tc/globals", 0700)
-	if err != nil {
-		logrus.WithError(err).Error("Failed create dir")
-		return err
-	}
-
-	_, err = os.Stat(b.versionedFilename())
-	if err != nil {
-		if !os.IsNotExist(err) {
+	/*
+		_, err := MaybeMountBPFfs()
+		if err != nil {
+			logrus.WithError(err).Error("Failed to mount bpffs")
 			return err
 		}
-		logrus.Debug("Map file didn't exist")
-		if b.context.RepinningEnabled {
-			logrus.WithField("name", b.Name).Info("Looking for map by name (to repin it)")
-			err = RepinMap(b.VersionedName(), b.versionedFilename())
-			if err != nil && !os.IsNotExist(err) {
+		// FIXME hard-coded dir
+		err = os.MkdirAll("/sys/fs/bpf/tc/globals", 0700)
+		if err != nil {
+			logrus.WithError(err).Error("Failed create dir")
+			return err
+		}
+
+		_, err = os.Stat(b.versionedFilename())
+		if err != nil {
+			if !os.IsNotExist(err) {
 				return err
 			}
+			logrus.Debug("Map file didn't exist")
+			if b.context.RepinningEnabled {
+				logrus.WithField("name", b.Name).Info("Looking for map by name (to repin it)")
+				err = RepinMap(b.VersionedName(), b.versionedFilename())
+				if err != nil && !os.IsNotExist(err) {
+					return err
+				}
+			}
 		}
-	}
 
-	if err == nil {
-		logrus.Debug("Map file already exists, trying to open it")
-		b.fd, err = GetMapFDByPin(b.versionedFilename())
 		if err == nil {
-			b.fdLoaded = true
-			logrus.WithField("fd", b.fd).WithField("name", b.versionedFilename()).
-				Info("Loaded map file descriptor.")
-			return nil
+			logrus.Debug("Map file already exists, trying to open it")
+			b.fd, err = GetMapFDByPin(b.versionedFilename())
+			if err == nil {
+				b.fdLoaded = true
+				logrus.WithField("fd", b.fd).WithField("name", b.versionedFilename()).
+					Info("Loaded map file descriptor.")
+				return nil
+			}
+			return err
 		}
-		return err
-	}
 
-	return err
+		return err
+	*/
+
+	return nil
 }
 
 func (b *PinnedMap) repinAt(from, to string) error {

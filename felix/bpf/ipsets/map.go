@@ -22,8 +22,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/projectcalico/calico/felix/bpf"
 	"github.com/projectcalico/calico/felix/ip"
 )
@@ -47,7 +45,7 @@ var MapParameters = bpf.MapParameters{
 	ValueSize:  4,
 	MaxEntries: 1024 * 1024,
 	Name:       "cali_v4_ip_sets",
-	Flags:      unix.BPF_F_NO_PREALLOC,
+	Flags:      0x01, // unix.BPF_F_NO_PREALLOC,
 }
 
 func Map(mc *bpf.MapContext) bpf.Map {
