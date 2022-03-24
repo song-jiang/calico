@@ -545,8 +545,8 @@ bin/calico-felix.transfer-url: bin/calico-felix
 bin/calico-felix.exe: $(SRC_FILES)
 	@echo Building felix for Windows...
 	mkdir -p bin
-	$(DOCKER_RUN) $(CALICO_BUILD) sh -c '$(GIT_CONFIG_SSH) \
-	   	GOOS=windows go build -v -o $@ -v $(LDFLAGS) "$(PACKAGE_NAME)/cmd/calico-felix" && \
+	$(DOCKER_GO_BUILD_CGO_WINDOWS) sh -c '$(GIT_CONFIG_SSH) \
+	   	GOOS=windows CC=x86_64-w64-mingw32-gcc go build --buildmode=exe -v -o $@ -v $(LDFLAGS) "$(PACKAGE_NAME)/cmd/calico-felix" && \
 		( ldd $@ 2>&1 | grep -q "Not a valid dynamic program\|not a dynamic executable" || \
 		( echo "Error: $@ was not statically linked"; false ) )'
 
