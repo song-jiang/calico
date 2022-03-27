@@ -26,7 +26,7 @@ import (
 
 	"github.com/projectcalico/calico/felix/bpf/asm"
 	"github.com/projectcalico/calico/felix/bpf/bpfutils"
-	"github.com/projectcalico/calico/felix/bpf/libbpf"
+	"github.com/projectcalico/calico/felix/bpf/libbpfwin"
 
 	"golang.org/x/sys/unix"
 )

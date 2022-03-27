@@ -153,8 +153,12 @@ CGO_LDFLAGS=""
 FV_RACE_DETECTOR_ENABLED?=false
 endif
 
+EBPF_WINDOWS_PATH=/go/src/github.com/projectcalico/calico/ebpf-for-windows
+EBPF_WINDOWS_LIBBPF_PATH=/go/src/github.com/projectcalico/calico/felix/bpf-gpl/include/libbpf
+CGO_CFLAGS_WIN="-I$(EBPF_WINDOWS_PATH)/include -I$(EBPF_WINDOWS_PATH)/external/libbpf/src -I$(EBPF_WINDOWS_PATH)/external/ebpf-verifier/src"
+
 DOCKER_GO_BUILD_CGO=$(DOCKER_RUN) $(TARGET_PLATFORM) -e CGO_ENABLED=$(CGO_ENABLED) -e CGO_LDFLAGS=$(CGO_LDFLAGS) -e CGO_CFLAGS=$(CGO_CFLAGS) $(CALICO_BUILD)
-DOCKER_GO_BUILD_CGO_WINDOWS=$(DOCKER_RUN) $(TARGET_PLATFORM) -e CGO_ENABLED=$(CGO_ENABLED) $(CALICO_BUILD)
+DOCKER_GO_BUILD_CGO_WINDOWS=$(DOCKER_RUN) $(TARGET_PLATFORM) -e CGO_ENABLED=$(CGO_ENABLED) -e CGO_CFLAGS=$(CGO_CFLAGS_WIN) $(CALICO_BUILD)
 
 bin/calico-felix-$(ARCH): $(LIBBPF_A) $(SRC_FILES)
 	@echo Building felix for $(ARCH) on $(BUILDARCH)
@@ -547,6 +551,15 @@ bin/calico-felix.exe: $(SRC_FILES)
 	mkdir -p bin
 	$(DOCKER_GO_BUILD_CGO_WINDOWS) sh -c '$(GIT_CONFIG_SSH) \
 	   	GOOS=windows CC=x86_64-w64-mingw32-gcc go build --buildmode=exe -v -o $@ -v $(LDFLAGS) "$(PACKAGE_NAME)/cmd/calico-felix" && \
+		( ldd $@ 2>&1 | grep -q "Not a valid dynamic program\|not a dynamic executable" || \
+		( echo "Error: $@ was not statically linked"; false ) )'
+
+# Cross-compile ebpfwin for Windows
+bin/ebpfwin.exe: $(SRC_FILES)
+	@echo Building felix for Windows...
+	mkdir -p bin
+	$(DOCKER_GO_BUILD_CGO_WINDOWS) sh -c '$(GIT_CONFIG_SSH) \
+	   	GOOS=windows CC=x86_64-w64-mingw32-gcc go build --buildmode=exe -v -o $@ -v $(LDFLAGS) "$(PACKAGE_NAME)/cmd/ebpfwin" && \
 		( ldd $@ 2>&1 | grep -q "Not a valid dynamic program\|not a dynamic executable" || \
 		( echo "Error: $@ was not statically linked"; false ) )'
 
