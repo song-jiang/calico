@@ -37,7 +37,12 @@ const (
 
 func RunProgram() int {
 	id := C.run_load_program()
-	return id
+	return int(id)
+}
+
+func RunAnotherProgram() int {
+	id := C.xsk_prog_load()
+	return int(id)
 }
 
 func NumPossibleCPUs() (int, error) {

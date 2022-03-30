@@ -22,5 +22,6 @@ import (
 
 func main() {
 	progID := ebpfwin.RunProgram()
-	fmt.Printf("Got program id: %d", progID)
+	new := ebpfwin.RunAnotherProgram()
+	fmt.Printf("Got program id: %d, %d", progID, new)
 }
