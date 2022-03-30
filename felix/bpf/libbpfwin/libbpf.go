@@ -12,20 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package libbpfwin
+package ebpfwin
 
+// #include "libbpf_api.h"
+import "C"
 import (
 	"fmt"
-	"os"
 	"syscall"
-	"time"
 	"unsafe"
 
 	"github.com/projectcalico/calico/felix/bpf/bpfutils"
 )
-
-// #include "libbpf_api.h"
-import "C"
 
 type Obj struct {
 	obj *C.struct_bpf_object
@@ -45,6 +42,17 @@ const (
 	QdiskEgress  QdiskHook = "egress"
 )
 
+func RunProgram() int {
+	id := C.run_load_program()
+	return int(id)
+}
+
+func RunAnotherProgram() int {
+	id := C.xsk_prog_load()
+	return int(id)
+}
+
+// real functions
 func (m *Map) Name() string {
 	name := C.bpf_map__name(m.bpfMap)
 	if name == nil {
@@ -61,7 +69,7 @@ func (m *Map) Type() int {
 func (m *Map) SetPinPath(path string) error {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
-	errno := C.bpf_map__set_pin_path(m.bpfMap, cPath)
+	errno := C.bpf_map_set_pin_path(m.bpfMap, cPath)
 	if errno != 0 {
 		err := syscall.Errno(errno)
 		return fmt.Errorf("pinning map failed %w", err)
@@ -70,7 +78,7 @@ func (m *Map) SetPinPath(path string) error {
 }
 
 func (m *Map) SetMapSize(size uint32) error {
-	_, err := C.bpf_map_set_max_entries(m.bpfMap, C.uint(size))
+	_, err := C.bpf_map__set_max_entries(m.bpfMap, C.uint(size))
 	if err != nil {
 		return fmt.Errorf("setting %s map size failed %w", m.Name(), err)
 	}
@@ -123,33 +131,6 @@ func (m *Map) NextMap() (*Map, error) {
 	return &Map{bpfMap: bpfMap, bpfObj: m.bpfObj}, nil
 }
 
-func (o *Obj) AttachClassifier(secName, ifName, hook string) (int, error) {
-	isIngress := 0
-	cSecName := C.CString(secName)
-	cIfName := C.CString(ifName)
-	defer C.free(unsafe.Pointer(cSecName))
-	defer C.free(unsafe.Pointer(cIfName))
-	ifIndex, err := C.if_nametoindex(cIfName)
-	if err != nil {
-		return -1, err
-	}
-
-	if hook == string(QdiskIngress) {
-		isIngress = 1
-	}
-
-	opts, err := C.bpf_tc_program_attach(o.obj, cSecName, C.int(ifIndex), C.int(isIngress))
-	if err != nil {
-		return -1, fmt.Errorf("Error attaching tc program %w", err)
-	}
-
-	progId, err := C.bpf_tc_query_iface(C.int(ifIndex), opts, C.int(isIngress))
-	if err != nil {
-		return -1, fmt.Errorf("Error querying interface %s: %w", ifName, err)
-	}
-	return int(progId), nil
-}
-
 type Link struct {
 	link *C.struct_bpf_link
 }
@@ -166,40 +147,12 @@ func (l *Link) Close() error {
 	return fmt.Errorf("link nil")
 }
 
-func CreateQDisc(ifName string) error {
-	cIfName := C.CString(ifName)
-	defer C.free(unsafe.Pointer(cIfName))
-	ifIndex, err := C.if_nametoindex(cIfName)
-	if err != nil {
-		return err
-	}
-	_, err = C.bpf_tc_create_qdisc(C.int(ifIndex))
-	if err != nil {
-		return fmt.Errorf("Error creating qdisc %w", err)
-	}
-	return nil
-}
-
-func RemoveQDisc(ifName string) error {
-	cIfName := C.CString(ifName)
-	defer C.free(unsafe.Pointer(cIfName))
-	ifIndex, err := C.if_nametoindex(cIfName)
-	if err != nil {
-		return err
-	}
-	_, err = C.bpf_tc_remove_qdisc(C.int(ifIndex))
-	if err != nil {
-		return fmt.Errorf("Error removing qdisc %w", err)
-	}
-	return nil
-}
-
 func (o *Obj) UpdateJumpMap(mapName, progName string, mapIndex int) error {
 	cMapName := C.CString(mapName)
 	cProgName := C.CString(progName)
 	defer C.free(unsafe.Pointer(cMapName))
 	defer C.free(unsafe.Pointer(cProgName))
-	_, err := C.bpf_tc_update_jump_map(o.obj, cMapName, cProgName, C.int(mapIndex))
+	_, err := C.bpf_update_jump_map(o.obj, cMapName, cProgName, C.int(mapIndex))
 	if err != nil {
 		return fmt.Errorf("Error updating %s at index %d: %w", mapName, mapIndex, err)
 	}
@@ -213,66 +166,6 @@ func (o *Obj) Close() error {
 		return nil
 	}
 	return fmt.Errorf("error: libbpf obj nil")
-}
-
-func (o *Obj) AttachCGroup(cgroup, progName string) (*Link, error) {
-	cProgName := C.CString(progName)
-	defer C.free(unsafe.Pointer(cProgName))
-
-	f, err := os.OpenFile(cgroup, os.O_RDONLY, 0)
-	if err != nil {
-		return nil, fmt.Errorf("failed to join cgroup %s: %w", cgroup, err)
-	}
-	defer f.Close()
-	fd := int(f.Fd())
-
-	link, err := C.bpf_program_attach_cgroup(o.obj, C.int(fd), cProgName)
-	if err != nil {
-		link = nil
-		_, err2 := C.bpf_program_attach_cgroup_legacy(o.obj, C.int(fd), cProgName)
-		if err2 != nil {
-			return nil, fmt.Errorf("failed to attach %s to cgroup %s (legacy try %s): %w",
-				progName, cgroup, err2, err)
-		}
-	}
-
-	return &Link{link: link}, nil
-}
-
-const (
-	// Set when IPv6 is enabled to configure bpf dataplane accordingly
-	GlobalsIPv6Enabled uint32 = C.CALI_GLOBALS_IPV6_ENABLED
-)
-
-func TcSetGlobals(
-	m *Map,
-	hostIP uint32,
-	intfIP uint32,
-	extToSvcMark uint32,
-	tmtu uint16,
-	vxlanPort uint16,
-	psNatStart uint16,
-	psNatLen uint16,
-	flags uint32,
-) error {
-	_, err := C.bpf_tc_set_globals(m.bpfMap,
-		C.uint(hostIP),
-		C.uint(intfIP),
-		C.uint(extToSvcMark),
-		C.ushort(tmtu),
-		C.ushort(vxlanPort),
-		C.ushort(psNatStart),
-		C.ushort(psNatLen),
-		C.uint(flags))
-
-	return err
-}
-
-func CTLBSetGlobals(m *Map, udpNotSeen time.Duration) error {
-	udpNotSeen /= time.Second // Convert to seconds
-	_, err := C.bpf_ctlb_set_globals(m.bpfMap, C.uint(udpNotSeen))
-
-	return err
 }
 
 func NumPossibleCPUs() (int, error) {

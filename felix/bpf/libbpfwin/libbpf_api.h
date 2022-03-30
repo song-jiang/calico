@@ -12,21 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "libbpf.h"
-#include <linux/limits.h>
-#include <net/if.h>
-#include <bpf.h>
-#include <stdlib.h>
-#include <errno.h>
-#include "globals.h"
+// Copyright (c) Microsoft Corporation
+// SPDX-License-Identifier: MIT
+#include <io.h>
+
+#define _MSC_VER
+#define bpf_insn ebpf_inst
+
+#ifdef __MINGW64__
+// Disable SAL 2.0d
+#define _Outptr_result_buffer_maybenull_(size)
+#define _In_opt_count_(size)
+#define _Post_invalid_
+#define _Post_ptr_invalid_
+#endif 
+
+#include "bpf/bpf.h"
+#include "bpf/libbpf.h"
+#include "ebpf_api.h"
 
 static void set_errno(int ret) {
 	errno = ret >= 0 ? ret : -ret;
 }
 
 struct bpf_object* bpf_obj_open(char *filename) {
-	struct bpf_object *obj;
-	obj = bpf_object__open(filename);
+    struct bpf_object_open_opts opts = {0};
+    struct bpf_object* obj = bpf_object__open_file(filename, &opts);
 	int err = libbpf_get_error(obj);
 	if (err) {
 		obj = NULL;
@@ -39,51 +50,16 @@ void bpf_obj_load(struct bpf_object *obj) {
 	set_errno(bpf_object__load(obj));
 }
 
-struct bpf_tc_opts bpf_tc_program_attach (struct bpf_object *obj, char *secName, int ifIndex, int isIngress) {
-
-	DECLARE_LIBBPF_OPTS(bpf_tc_hook, hook, .attach_point = BPF_TC_EGRESS);
-	DECLARE_LIBBPF_OPTS(bpf_tc_opts, attach);
-
-	if (isIngress) {
-		hook.attach_point = BPF_TC_INGRESS;
-	}
-
-	attach.prog_fd = bpf_program__fd(bpf_object__find_program_by_name(obj, secName));
-	if (attach.prog_fd < 0) {
-		errno = -attach.prog_fd;
-		return attach;
-	}
-	hook.ifindex = ifIndex;
-	set_errno(bpf_tc_attach(&hook, &attach));
-	return attach;
+int bpf_link_destroy(struct bpf_link *link) {
+	return bpf_link__destroy(link);
 }
 
-int bpf_tc_query_iface (int ifIndex, struct bpf_tc_opts opts, int isIngress) {
-
-	DECLARE_LIBBPF_OPTS(bpf_tc_hook, hook, .attach_point = BPF_TC_EGRESS);
-	if (isIngress) {
-		hook.attach_point = BPF_TC_INGRESS;
-	}
-	hook.ifindex = ifIndex;
-	opts.prog_fd = opts.prog_id = opts.flags = 0;
-	set_errno(bpf_tc_query(&hook, &opts));
-	return opts.prog_id;
+int bpf_map_set_pin_path(struct bpf_map* map, const char* path) {
+    return bpf_map__pin(map, path);
 }
 
-void bpf_tc_create_qdisc (int ifIndex) {
-	DECLARE_LIBBPF_OPTS(bpf_tc_hook, hook, .attach_point = BPF_TC_INGRESS);
-	hook.ifindex = ifIndex;
-	set_errno(bpf_tc_hook_create(&hook));
-}
-
-void bpf_tc_remove_qdisc (int ifIndex) {
-        DECLARE_LIBBPF_OPTS(bpf_tc_hook, hook, .attach_point = BPF_TC_EGRESS | BPF_TC_INGRESS);
-        hook.ifindex = ifIndex;
-        set_errno(bpf_tc_hook_destroy(&hook));
-        return;
-}
-
-int bpf_tc_update_jump_map(struct bpf_object *obj, char* mapName, char *progName, int progIndex) {
+#define ENOENT	3025
+int bpf_update_jump_map(struct bpf_object *obj, char* mapName, char *progName, int progIndex) {
 	struct bpf_program *prog_name = bpf_object__find_program_by_name(obj, progName);
 	if (prog_name == NULL) {
 		errno = ENOENT;
@@ -102,96 +78,21 @@ int bpf_tc_update_jump_map(struct bpf_object *obj, char* mapName, char *progName
 	return bpf_map_update_elem(map_fd, &progIndex, &prog_fd, 0);
 }
 
-int bpf_link_destroy(struct bpf_link *link) {
-	return bpf_link__destroy(link);
-}
-
-void bpf_tc_set_globals(struct bpf_map *map,
-			uint host_ip,
-			uint intf_ip,
-			uint ext_to_svc_mark,
-			ushort tmtu,
-			ushort vxlanPort,
-			ushort psnat_start,
-			ushort psnat_len,
-			uint flags)
-{
-	struct cali_tc_globals data = {
-		.host_ip = host_ip,
-		.tunnel_mtu = tmtu,
-		.vxlan_port = vxlanPort,
-		.intf_ip = intf_ip,
-		.ext_to_svc_mark = ext_to_svc_mark,
-		.psnat_start = psnat_start,
-		.psnat_len = psnat_len,
-		.flags = flags,
-	};
-
-	set_errno(bpf_map__set_initial_value(map, (void*)(&data), sizeof(data)));
-}
-
-struct bpf_link *bpf_program_attach_cgroup(struct bpf_object *obj, int cgroup_fd, char *name)
-{
-	int err = 0;
-	struct bpf_link *link = NULL;
-	struct bpf_program *prog;
-
-	if (!(prog = bpf_object__find_program_by_name(obj, name))) {
-		err = ENOENT;
-		goto out;
-	}
-
-	link = bpf_program__attach_cgroup(prog, cgroup_fd);
-	err = libbpf_get_error(link);
-	if (err) {
-		link = NULL;
-		goto out;
-	}
-
-out:
-	set_errno(err);
-	return link;
-}
-
-int bpf_program_attach_cgroup_legacy(struct bpf_object *obj, int cgroup_fd, char *name)
-{
-	int err = 0, prog_fd;
-	struct bpf_program *prog;
-	enum bpf_attach_type attach_type;
-
-	if (!(prog = bpf_object__find_program_by_name(obj, name))) {
-		err = ENOENT;
-		goto out;
-	}
-
-	prog_fd = bpf_program__fd(prog);
-	if (prog_fd < 0) {
-		err = EINVAL;
-		goto out;
-	}
-
-	attach_type = bpf_program__get_expected_attach_type(prog);
-	err = bpf_prog_attach(prog_fd, cgroup_fd, attach_type, 0);
-
-out:
-	set_errno(err);
-	return err;
-}
-
-void bpf_ctlb_set_globals(struct bpf_map *map, uint udp_not_seen_timeo)
-{
-	struct cali_ctlb_globals data = {
-		.udp_not_seen_timeo = udp_not_seen_timeo,
-	};
-
-	set_errno(bpf_map__set_initial_value(map, (void*)(&data), sizeof(data)));
-}
-
-void bpf_map_set_max_entries(struct bpf_map *map, uint max_entries) {
-	set_errno(bpf_map__resize(map, max_entries));
-}
-
 int num_possible_cpu()
 {
     return libbpf_num_possible_cpus();
+}
+
+// The following code should be exposed by ebpfapi.dll
+int bpf_map__set_max_entries(struct bpf_map *map, __u32 max_entries)
+{
+    // TODO
+	return 0;
+}
+
+bool bpf_map__is_internal(const struct bpf_map *map)
+{
+    // TODO
+    return false;
+	// return map->libbpf_type != LIBBPF_MAP_UNSPEC;
 }
