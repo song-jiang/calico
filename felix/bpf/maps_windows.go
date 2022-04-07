@@ -25,50 +25,8 @@ import (
 )
 
 func (b *PinnedMap) Open() error {
-	if b.fdLoaded {
-		return nil
-	}
-
-	_, err := MaybeMountBPFfs()
-	if err != nil {
-		logrus.WithError(err).Error("Failed to mount bpffs")
-		return err
-	}
-	// FIXME hard-coded dir
-	err = os.MkdirAll("/sys/fs/bpf/tc/globals", 0700)
-	if err != nil {
-		logrus.WithError(err).Error("Failed create dir")
-		return err
-	}
-
-	_, err = os.Stat(b.versionedFilename())
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return err
-		}
-		logrus.Debug("Map file didn't exist")
-		if b.context.RepinningEnabled {
-			logrus.WithField("name", b.Name).Info("Looking for map by name (to repin it)")
-			err = RepinMap(b.VersionedName(), b.versionedFilename())
-			if err != nil && !os.IsNotExist(err) {
-				return err
-			}
-		}
-	}
-
-	if err == nil {
-		logrus.Debug("Map file already exists, trying to open it")
-		b.fd, err = GetMapFDByPin(b.versionedFilename())
-		if err == nil {
-			b.fdLoaded = true
-			logrus.WithField("fd", b.fd).WithField("name", b.versionedFilename()).
-				Info("Loaded map file descriptor.")
-			return nil
-		}
-		return err
-	}
-
-	return err
+	// Do nothing on Windows for now.
+	return nil
 }
 
 func (b *PinnedMap) oldMapExists() bool {
@@ -82,7 +40,6 @@ func (b *PinnedMap) oldMapExists() bool {
 }
 
 func (b *PinnedMap) EnsureExists() error {
-	oldMapPath := b.Path() + "_old"
 	copyData := false
 	if b.fdLoaded {
 		return nil
@@ -90,15 +47,7 @@ func (b *PinnedMap) EnsureExists() error {
 
 	// In case felix restarts in the middle of migration, we might end up with
 	// old map. Repin the old map and let the map creation continue.
-	if b.oldMapExists() {
-		if _, err := os.Stat(b.Path()); err == nil {
-			os.Remove(b.Path())
-		}
-		err := b.repinAt(oldMapPath, b.Path())
-		if err != nil {
-			return fmt.Errorf("error repinning old map %s to %s, err=%w", oldMapPath, b.Path(), err)
-		}
-	}
+	// Do nothing for now on Windows.
 
 	if err := b.Open(); err == nil {
 		// Get the existing map info

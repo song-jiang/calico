@@ -31,7 +31,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// #include "bpf_syscall.h"
+// #include "bpf_syscall_windows.h"
 import "C"
 
 func SyscallSupport() bool {
@@ -40,33 +40,13 @@ func SyscallSupport() bool {
 
 func GetMapFDByPin(filename string) (MapFD, error) {
 	log.Debugf("GetMapFDByPin(%v)", filename)
-	bpfAttr := C.bpf_attr_alloc()
-	defer C.free(unsafe.Pointer(bpfAttr))
+	// TODO
 
-	cFilename := C.CString(filename)
-	defer C.free(unsafe.Pointer(cFilename))
-
-	C.bpf_attr_setup_obj_get(bpfAttr, cFilename, 0)
-	fd, _, errno := unix.Syscall(unix.SYS_BPF, unix.BPF_OBJ_GET, uintptr(unsafe.Pointer(bpfAttr)), C.sizeof_union_bpf_attr)
-	if errno != 0 {
-		return 0, errno
-	}
-
-	return MapFD(fd), nil
+	return 0, fmt.Error("TODO, not implemented.")
 }
 
 func GetMapFDByID(mapID int) (MapFD, error) {
-	log.Debugf("GetMapFDByID(%v)", mapID)
-	bpfAttr := C.bpf_attr_alloc()
-	defer C.free(unsafe.Pointer(bpfAttr))
-
-	C.bpf_attr_setup_obj_get_id(bpfAttr, C.uint(mapID), 0)
-	fd, _, errno := unix.Syscall(unix.SYS_BPF, unix.BPF_MAP_GET_FD_BY_ID, uintptr(unsafe.Pointer(bpfAttr)), C.sizeof_union_bpf_attr)
-	if errno != 0 {
-		return 0, errno
-	}
-
-	return MapFD(fd), nil
+	return libbpfwin.GetMapFDByID(mapID)
 }
 
 const defaultLogSize = 1024 * 1024
@@ -116,21 +96,11 @@ func LoadBPFProgramFromInsns(insns asm.Insns, license string, progType uint32) (
 
 func tryLoadBPFProgramFromInsns(insns asm.Insns, license string, logSize uint, progType uint32) (ProgFD, error) {
 	log.Debugf("tryLoadBPFProgramFromInsns(..., %v, %v, %v)", license, logSize, progType)
-	bpfAttr := C.bpf_attr_alloc()
-	defer C.free(unsafe.Pointer(bpfAttr))
 
 	cInsnBytes := C.CBytes(insns.AsBytes())
 	defer C.free(cInsnBytes)
 	cLicense := C.CString(license)
 	defer C.free(unsafe.Pointer(cLicense))
-
-	var logBuf unsafe.Pointer
-	var logLevel uint
-	if logSize > 0 {
-		logLevel = 1
-		logBuf = C.malloc((C.size_t)(logSize))
-		defer C.free(logBuf)
-	}
 
 	C.bpf_attr_setup_load_prog(bpfAttr, (C.uint)(progType), C.uint(len(insns)), cInsnBytes, cLicense, (C.uint)(logLevel), (C.uint)(logSize), logBuf)
 	fd, _, errno := unix.Syscall(unix.SYS_BPF, unix.BPF_PROG_LOAD, uintptr(unsafe.Pointer(bpfAttr)), C.sizeof_union_bpf_attr)
@@ -280,22 +250,15 @@ func checkMapIfDebug(mapFD MapFD, keySize, valueSize int) error {
 }
 
 func GetMapInfo(fd MapFD) (*MapInfo, error) {
-	bpfAttr := C.bpf_attr_alloc()
-	defer C.free(unsafe.Pointer(bpfAttr))
-	var bpfMapInfo *C.struct_bpf_map_info = (*C.struct_bpf_map_info)(C.malloc(C.sizeof_struct_bpf_map_info))
-	defer C.free(unsafe.Pointer(bpfMapInfo))
-
-	C.bpf_attr_setup_get_info(bpfAttr, C.uint(fd), C.sizeof_struct_bpf_map_info, unsafe.Pointer(bpfMapInfo))
-	_, _, errno := unix.Syscall(unix.SYS_BPF, unix.BPF_OBJ_GET_INFO_BY_FD, uintptr(unsafe.Pointer(bpfAttr)), C.sizeof_union_bpf_attr)
-
-	if errno != 0 {
-		return nil, errno
+	mapType, keySize, valueSize, maxEntries, err := libbpfwin.GetMapInfo(int(fd))
+	if err != nil {
+		return nil, err
 	}
 	return &MapInfo{
-		Type:       int(bpfMapInfo._type),
-		KeySize:    int(bpfMapInfo.key_size),
-		ValueSize:  int(bpfMapInfo.value_size),
-		MaxEntries: int(bpfMapInfo.max_entries),
+		Type:       mapType,
+		KeySize:    keySize,
+		ValueSize:  valueSize,
+		MaxEntries: maxEntries,
 	}, nil
 }
 

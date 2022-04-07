@@ -172,6 +172,73 @@ bool bpf_map__is_internal(const struct bpf_map *map)
 	// return map->libbpf_type != LIBBPF_MAP_UNSPEC;
 }
 
+// The following is the function for syscall_windows
+void bpf_map_get_info(int map_fd, struct bpf_map_info *p_map_info) { 
+    uint32_t map_info_size = sizeof(*p_map_info);
+    int err = bpf_obj_get_info_by_fd(map_fd, p_map_info, &map_info_size);
+	set_errno(err);
+    return;
+}
+
+int bpf_map_get_map_fd_by_id(int id) {
+    // Verify that the map still exists.
+    int map_fd = bpf_map_get_fd_by_id(id);
+    if (map_fd <= 0) {
+        set_errno(ENOENT);
+		return -1;
+    }
+    return map_fd;
+}
+
+int
+bpf_program__load_bytecode(
+    enum bpf_prog_type type,
+    void *insns,
+    size_t insns_cnt,
+    char* license,
+    __u32 kern_version,
+    void* log_buf,
+    size_t log_buf_sz)
+{
+    int program_fd = bpf_load_program(type, (struct ebpf_inst*)insns, insns_cnt, license, kern_version, log_buf, log_buf_sz);
+    fprintf(stdout, "Load program with fd: %d\n", program_fd);
+    if (program_fd <= 0) {
+        set_errno(ENOENT);
+		return -1;
+    }
+     // Now query the program info and verify it matches what we set.
+    struct bpf_prog_info program_info;
+    uint32_t program_info_size = sizeof(program_info);
+    if (bpf_obj_get_info_by_fd(program_fd, &program_info, &program_info_size) < 0) {
+        fprintf(stderr, "Failed to call bpf_obj_get_info_by fd: %d\n", errno);
+        return -1;
+    }
+
+    // TODO(issue #223): change below to BPF_PROG_TYPE_XDP.
+    // REQUIRE(program_info.type == BPF_PROG_TYPE_UNSPEC);
+    fprintf(stdout, "bpf_prog_info { name: %s, type: %d }\n", program_info.name, program_info.type);
+    return program_fd;
+}
+
+void bpf_map__lookup_elem(int fd, const void *key, const void *value) {
+    int error = bpf_map_lookup_elem(fd, key, value);
+    if (error != 0) {
+        fprintf(stderr, "Failed to get entry map: %d\n", errno);
+        set_errno(error);
+    }
+    return;
+}
+
+void bpf_map__update_elem(int fd, const void *key, const void *value, __u64 flags) {
+    int error = bpf_map_update_elem(fd, key, value, flags);
+    if (error != 0) {
+        fprintf(stderr, "Failed to update map: %d\n", errno);
+        set_errno(error);
+    }
+    return;
+}
+
+
 // The following is just for demo of ebpfwin.exe
 int run_load_program() {
 	// Try with a valid set of instructions.
@@ -179,35 +246,6 @@ int run_load_program() {
         {0xb7, R0_RETURN_VALUE, 0}, // r0 = 0
         {INST_OP_EXIT},             // return r0
     };
-
-    /*
-    const char* trace_map = "calico_xdp::trace_map";
-
-    const char* error_message = NULL;
-    ebpf_result_t result;
-    struct bpf_object* object = nullptr;
-    fd_t program_fd;
-
-    result = ebpf_program_load(
-        "xdp.o", nullptr, nullptr, EBPF_EXECUTION_JIT, &object, &program_fd, &error_message);
-    if (result != EBPF_SUCCESS) {
-        fprintf(stderr, "Failed to load calico xdp eBPF program\n");
-        fprintf(stderr, "%s", error_message);
-        ebpf_free_string(error_message);
-        return 1;
-    }
-
-    fd_t trace_map_fd = bpf_object__find_map_fd_by_name(object, "trace_map");
-    if (trace_map_fd <= 0) {
-        fprintf(stderr, "Failed to find eBPF map : %s\n", trace_map);
-        return 1;
-    }
-
-    if (bpf_obj_pin(trace_map_fd, trace_map) < 0) {
-        fprintf(stderr, "Failed to pin eBPF program: %d\n", errno);
-        return 1;
-    }
-    */
 
     // Load and verify the eBPF program.
     int size = sizeof(instructions)/sizeof(instructions[0]);

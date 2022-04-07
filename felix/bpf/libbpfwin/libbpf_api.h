@@ -15,6 +15,7 @@
 // Copyright (c) Microsoft Corporation
 // SPDX-License-Identifier: MIT
 #include <io.h>
+#include <stdlib.h>
 
 #define _MSC_VER
 #define bpf_insn ebpf_inst
@@ -95,4 +96,13 @@ bool bpf_map__is_internal(const struct bpf_map *map)
     // TODO
     return false;
 	// return map->libbpf_type != LIBBPF_MAP_UNSPEC;
+}
+
+// The following is the function for syscall_windows
+
+void bpf_map_get_info(int map_fd, struct bpf_map_info *p_map_info) { 
+    uint32_t map_info_size = sizeof(*p_map_info);
+    int err = bpf_obj_get_info_by_fd(map_fd, p_map_info, &map_info_size);
+	set_errno(err);
+    return;
 }

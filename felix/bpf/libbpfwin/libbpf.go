@@ -42,16 +42,6 @@ const (
 	QdiskEgress  QdiskHook = "egress"
 )
 
-func RunProgram() int {
-	id := C.run_load_program()
-	return int(id)
-}
-
-func RunAnotherProgram() int {
-	id := C.xsk_prog_load()
-	return int(id)
-}
-
 // real functions
 func (m *Map) Name() string {
 	name := C.bpf_map__name(m.bpfMap)
@@ -174,4 +164,19 @@ func NumPossibleCPUs() (int, error) {
 		return ncpus, fmt.Errorf("Invalid number of CPUs: %d", ncpus)
 	}
 	return ncpus, nil
+}
+
+// The following is the function for syscall_windows
+
+func GetMapInfo(fd int) (int, int, int, int, error) {
+	var map_info C.struct_bpf_map_info
+	_, err := C.bpf_map_get_info(C.int(fd), &map_info)
+	if err != nil {
+		return 0, 0, 0, 0, fmt.Errorf("Error get map info with fd %d: %w", fd, err)
+	}
+	return int(map_info._type),
+		int(map_info.key_size),
+		int(map_info.value_size),
+		int(map_info.max_entries),
+		nil
 }
