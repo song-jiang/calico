@@ -173,14 +173,14 @@ bool bpf_map__is_internal(const struct bpf_map *map)
 }
 
 // The following is the function for syscall_windows
-void bpf_map_get_info(int map_fd, struct bpf_map_info *p_map_info) { 
+void bpf_map__get_info(int map_fd, struct bpf_map_info *p_map_info) { 
     uint32_t map_info_size = sizeof(*p_map_info);
     int err = bpf_obj_get_info_by_fd(map_fd, p_map_info, &map_info_size);
 	set_errno(err);
     return;
 }
 
-int bpf_map_get_map_fd_by_id(int id) {
+int bpf_map__get_map_fd_by_id(int id) {
     // Verify that the map still exists.
     int map_fd = bpf_map_get_fd_by_id(id);
     if (map_fd <= 0) {

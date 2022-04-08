@@ -18,9 +18,11 @@ package ebpfwin
 import "C"
 import (
 	"fmt"
+	"strings"
 	"syscall"
 	"unsafe"
 
+	"github.com/projectcalico/calico/felix/bpf/asm"
 	"github.com/projectcalico/calico/felix/bpf/bpfutils"
 )
 
@@ -167,10 +169,19 @@ func NumPossibleCPUs() (int, error) {
 }
 
 // The following is the function for syscall_windows
+func GetMapFDByID(mapID int) (int, error) {
+	fd, err := C.bpf_map__get_map_fd_by_id(C.int(mapID))
+	if err != nil {
+		return 0, err
+	}
+
+	return int(fd), nil
+}
 
 func GetMapInfo(fd int) (int, int, int, int, error) {
 	var map_info C.struct_bpf_map_info
-	_, err := C.bpf_map_get_info(C.int(fd), &map_info)
+	// _, err := C.bpf_map_get_info(C.int(fd), (*C.struct_bpf_map_info)(unsafe.Pointer(&map_info)))
+	_, err := C.bpf_map__get_info(C.int(fd), &map_info)
 	if err != nil {
 		return 0, 0, 0, 0, fmt.Errorf("Error get map info with fd %d: %w", fd, err)
 	}
@@ -179,4 +190,74 @@ func GetMapInfo(fd int) (int, int, int, int, error) {
 		int(map_info.value_size),
 		int(map_info.max_entries),
 		nil
+}
+
+func LoadBPFProgramFromInsns(insns asm.Insns, license string, progType uint32) (int, error) {
+	cInsnBytes := C.CBytes(insns.AsBytes())
+	defer C.free(cInsnBytes)
+	cLicense := C.CString(license)
+	defer C.free(unsafe.Pointer(cLicense))
+
+	var logBuf unsafe.Pointer
+	logSize := 10000
+	if logSize > 0 {
+		logBuf = C.malloc((C.size_t)(logSize))
+		defer C.free(logBuf)
+	}
+
+	fd, err := C.bpf_program__load_bytecode(C.enum_bpf_prog_type(progType), cInsnBytes, C.size_t(len(insns)), cLicense, 0, logBuf, C.size_t(logSize))
+
+	if err != nil {
+		goLog := strings.TrimSpace(C.GoString((*C.char)(logBuf)))
+		fmt.Println("BPF_PROG_LOAD failed")
+		if len(goLog) > 0 {
+			for _, l := range strings.Split(goLog, "\n") {
+				fmt.Printf("BPF Verifier:    ", l)
+			}
+		} else if logSize > 0 {
+			fmt.Printf("Verifier log was empty.")
+		}
+	}
+
+	if err != nil {
+		return 0, err
+	}
+	return int(fd), nil
+}
+
+func UpdateMapEntry(mapFD int, k, v []byte) error {
+	cK := C.CBytes(k)
+	defer C.free(cK)
+	cV := C.CBytes(v)
+	defer C.free(cV)
+
+	_, err := C.bpf_map__update_elem(C.int(mapFD), cK, cV, 0)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func GetMapEntry(mapFD int, k []byte, valueSize int) ([]byte, error) {
+	val := make([]byte, valueSize)
+
+	_, err := C.bpf_map__lookup_elem(C.int(mapFD), unsafe.Pointer(&k[0]), unsafe.Pointer(&val[0]))
+	if err != nil {
+		return nil, err
+	}
+
+	return val, nil
+}
+
+//--------------------------------------
+// The following is for ebpfwin functions
+
+func RunProgram() int {
+	id := C.run_load_program()
+	return int(id)
+}
+
+func RunAnotherProgram() int {
+	id := C.xsk_prog_load()
+	return int(id)
 }

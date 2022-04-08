@@ -17,7 +17,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/projectcalico/calico/felix/bpf/ebpfwin"
+	ebpfwin "github.com/projectcalico/calico/felix/bpf/libbpfwin"
 )
 
 func main() {

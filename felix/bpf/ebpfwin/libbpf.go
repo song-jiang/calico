@@ -179,7 +179,7 @@ func NumPossibleCPUs() (int, error) {
 }
 
 func GetMapFDByID(mapID int) (int, error) {
-	fd, err := C.bpf_map_get_map_fd_by_id(C.int(mapID))
+	fd, err := C.bpf_map__get_map_fd_by_id(C.int(mapID))
 	if err != nil {
 		return 0, err
 	}
@@ -190,7 +190,7 @@ func GetMapFDByID(mapID int) (int, error) {
 func GetMapInfo(fd int) (int, int, int, int, error) {
 	var map_info C.struct_bpf_map_info
 	// _, err := C.bpf_map_get_info(C.int(fd), (*C.struct_bpf_map_info)(unsafe.Pointer(&map_info)))
-	_, err := C.bpf_map_get_info(C.int(fd), &map_info)
+	_, err := C.bpf_map__get_info(C.int(fd), &map_info)
 	if err != nil {
 		return 0, 0, 0, 0, fmt.Errorf("Error get map info with fd %d: %w", fd, err)
 	}
