@@ -54,123 +54,14 @@ const maxLogSize = 128 * 1024 * 1024
 
 func LoadBPFProgramFromInsns(insns asm.Insns, license string, progType uint32) (fd ProgFD, err error) {
 	log.Debugf("LoadBPFProgramFromInsns(%v, %v, %v)", insns, license, progType)
-	bpfutils.IncreaseLockedMemoryQuota()
-
-	// Occasionally see retryable errors here, retry silently a few times before going into log-collection mode.
-	backoff := 1 * time.Millisecond
-	for retries := 10; retries > 0; retries-- {
-		// By default, try to load the program with logging disabled.  This has two advantages: better performance
-		// and the fact that the log cannot overflow.
-		fd, err = tryLoadBPFProgramFromInsns(insns, license, 0, progType)
-		if err == nil {
-			log.WithField("fd", fd).Debug("Loaded program successfully")
-			return fd, nil
-		}
-		log.WithError(err).Debug("Error loading BPF program; will retry.")
-		time.Sleep(backoff)
-		backoff *= 2
-	}
-
-	// Retry again, passing a log buffer to get the diagnostics from the kernel.
-	log.WithError(err).Warn("Failed to load BPF program; collecting diagnostics...")
-	var logSize uint = defaultLogSize
-	for {
-		fd, err2 := tryLoadBPFProgramFromInsns(insns, license, logSize, progType)
-		if err2 == nil {
-			// Unexpected but we'll take it.
-			log.Warn("Retry succeeded.")
-			return fd, nil
-		}
-		if err2 == unix.ENOSPC && logSize < maxLogSize {
-			// Log buffer was too small.
-			log.Warn("Diagnostics buffer was too small, trying again with a larger buffer.")
-			logSize *= 2
-			continue
-		}
-		if err != err2 {
-			log.WithError(err2).Error("Retry failed with a different error.")
-		}
-		return 0, err
-	}
-}
-
-func tryLoadBPFProgramFromInsns(insns asm.Insns, license string, logSize uint, progType uint32) (ProgFD, error) {
-	log.Debugf("tryLoadBPFProgramFromInsns(..., %v, %v, %v)", license, logSize, progType)
-
-	cInsnBytes := C.CBytes(insns.AsBytes())
-	defer C.free(cInsnBytes)
-	cLicense := C.CString(license)
-	defer C.free(unsafe.Pointer(cLicense))
-
-	C.bpf_attr_setup_load_prog(bpfAttr, (C.uint)(progType), C.uint(len(insns)), cInsnBytes, cLicense, (C.uint)(logLevel), (C.uint)(logSize), logBuf)
-	fd, _, errno := unix.Syscall(unix.SYS_BPF, unix.BPF_PROG_LOAD, uintptr(unsafe.Pointer(bpfAttr)), C.sizeof_union_bpf_attr)
-
-	if errno != 0 && errno != unix.ENOSPC /* log buffer too small */ {
-		goLog := strings.TrimSpace(C.GoString((*C.char)(logBuf)))
-		log.WithError(errno).Debug("BPF_PROG_LOAD failed")
-		if len(goLog) > 0 {
-			for _, l := range strings.Split(goLog, "\n") {
-				log.Error("BPF Verifier:    ", l)
-			}
-		} else if logSize > 0 {
-			log.Error("Verifier log was empty.")
-		}
-	}
-
-	if errno != 0 {
-		return 0, errno
-	}
-	return ProgFD(fd), nil
+	fd, err := libbpfwin.LoadBPFProgramFromInsns(insns, license, progType)
+	return ProgFD(fd), err
 }
 
 func RunBPFProgram(fd ProgFD, dataIn []byte, repeat int) (pr ProgResult, err error) {
-	log.Debugf("RunBPFProgram(%v, ..., %v)", fd, repeat)
-	bpfAttr := C.bpf_attr_alloc()
-	defer C.free(unsafe.Pointer(bpfAttr))
+	log.Debugf("RunBPFProgram(%v, ..., %v)， not supported on Windows yet", fd, repeat)
 
-	cDataIn := C.CBytes(dataIn)
-	defer C.free(cDataIn)
-	const dataOutBufSize = 4096
-	cDataOut := C.malloc(dataOutBufSize)
-	defer C.free(cDataOut)
-
-	var errno syscall.Errno
-	for attempts := 3; attempts > 0; attempts-- {
-		C.bpf_attr_setup_prog_run(bpfAttr, C.uint(fd), C.uint(len(dataIn)), cDataIn, C.uint(dataOutBufSize), cDataOut, C.uint(repeat))
-		_, _, errno = unix.Syscall(unix.SYS_BPF, unix.BPF_PROG_TEST_RUN, uintptr(unsafe.Pointer(bpfAttr)), C.sizeof_union_bpf_attr)
-		if errno == unix.EINTR {
-			// We hit this if a Go profiling timer pops while we're in the syscall.
-			log.Debug("BPF_PROG_TEST_RUN hit EINTR")
-			continue
-		}
-		break
-	}
-	if errno != 0 {
-		err = errno
-		return
-	}
-
-	pr.RC = int32(C.bpf_attr_prog_run_retval(bpfAttr))
-	dataOutSize := C.bpf_attr_prog_run_data_out_size(bpfAttr)
-	pr.Duration = time.Duration(C.bpf_attr_prog_run_data_out_size(bpfAttr))
-	pr.DataOut = C.GoBytes(cDataOut, C.int(dataOutSize))
-	return
-}
-
-func PinBPFProgram(fd ProgFD, filename string) error {
-	bpfAttr := C.bpf_attr_alloc()
-	defer C.free(unsafe.Pointer(bpfAttr))
-
-	cFilename := C.CString(filename)
-	defer C.free(unsafe.Pointer(cFilename))
-
-	C.bpf_attr_setup_obj_pin(bpfAttr, cFilename, C.uint(fd), 0)
-	_, _, errno := unix.Syscall(unix.SYS_BPF, unix.BPF_OBJ_PIN, uintptr(unsafe.Pointer(bpfAttr)), C.sizeof_union_bpf_attr)
-	if errno != 0 {
-		return errno
-	}
-
-	return nil
+	return nil, nil
 }
 
 func UpdateMapEntry(mapFD MapFD, k, v []byte) error {
@@ -181,71 +72,17 @@ func UpdateMapEntry(mapFD MapFD, k, v []byte) error {
 		return err
 	}
 
-	bpfAttr := C.bpf_attr_alloc()
-	defer C.free(unsafe.Pointer(bpfAttr))
-
-	cK := C.CBytes(k)
-	defer C.free(cK)
-	cV := C.CBytes(v)
-	defer C.free(cV)
-
-	C.bpf_attr_setup_map_elem(bpfAttr, C.uint(mapFD), cK, cV, unix.BPF_ANY)
-
-	_, _, errno := unix.Syscall(unix.SYS_BPF, unix.BPF_MAP_UPDATE_ELEM, uintptr(unsafe.Pointer(bpfAttr)), C.sizeof_union_bpf_attr)
-
-	if errno != 0 {
-		return errno
-	}
-	return nil
+	return libbpfwin.UpdateMapEntry(mapFD, k, v)
 }
 
 func GetMapEntry(mapFD MapFD, k []byte, valueSize int) ([]byte, error) {
 	log.Debugf("GetMapEntry(%v, %v, %v)", mapFD, k, valueSize)
 
-	err := checkMapIfDebug(mapFD, len(k), valueSize)
-	if err != nil {
-		return nil, err
-	}
-
-	val := make([]byte, valueSize)
-
-	errno := C.bpf_map_call(unix.BPF_MAP_LOOKUP_ELEM, C.uint(mapFD),
-		unsafe.Pointer(&k[0]), unsafe.Pointer(&val[0]), 0)
-	if errno != 0 {
-		return nil, unix.Errno(errno)
-	}
-
-	return val, nil
+	return libbpfwin.GetMapEntry(mapFD, k, valueSize)
 }
 
 func checkMapIfDebug(mapFD MapFD, keySize, valueSize int) error {
-	if log.GetLevel() < log.DebugLevel {
-		return nil
-	}
-	mapInfo, err := GetMapInfo(mapFD)
-	if err != nil {
-		log.WithError(err).Error("Failed to read map information")
-		return err
-	}
-	log.WithField("mapInfo", mapInfo).Debug("Map metadata")
-	if keySize != mapInfo.KeySize {
-		log.WithField("mapInfo", mapInfo).WithField("keyLen", keySize).Panic("Incorrect key length")
-	}
-	switch mapInfo.Type {
-	case unix.BPF_MAP_TYPE_PERCPU_HASH, unix.BPF_MAP_TYPE_PERCPU_ARRAY, unix.BPF_MAP_TYPE_LRU_PERCPU_HASH, unix.BPF_MAP_TYPE_PERCPU_CGROUP_STORAGE:
-		// The actual size of per cpu maps is equal to the value size * number of cpu
-		ncpus, err := libbpf.NumPossibleCPUs()
-		if err != nil {
-			log.WithError(err).Panic("Failed to get number of possible cpus")
-		}
-		if valueSize >= 0 && valueSize != mapInfo.ValueSize*ncpus {
-			log.WithField("mapInfo", mapInfo).WithField("valueLen", valueSize).Panic("Incorrect value length for per-CPU map")
-		}
-	default:
-		if valueSize >= 0 && valueSize != mapInfo.ValueSize {
-			log.WithField("mapInfo", mapInfo).WithField("valueLen", valueSize).Panic("Incorrect value length")
-		}
-	}
+	// Do nothing at moment for Windows.
 	return nil
 }
 
@@ -270,13 +107,7 @@ func DeleteMapEntry(mapFD MapFD, k []byte, valueSize int) error {
 		return err
 	}
 
-	errno := C.bpf_map_call(unix.BPF_MAP_DELETE_ELEM, C.uint(mapFD),
-		unsafe.Pointer(&k[0]), unsafe.Pointer(nil), 0)
-	if errno != 0 {
-		return unix.Errno(errno)
-	}
-
-	return nil
+	return libbpfwin.DeleteMapEntry(mapFD, k, valueSize)
 }
 
 func DeleteMapEntryIfExists(mapFD MapFD, k []byte, valueSize int) error {

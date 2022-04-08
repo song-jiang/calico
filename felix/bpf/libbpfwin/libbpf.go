@@ -249,6 +249,11 @@ func GetMapEntry(mapFD int, k []byte, valueSize int) ([]byte, error) {
 	return val, nil
 }
 
+func DeleteMapEntry(mapFD int, k []byte, valueSize int) error {
+	_, err := C.bpf_map__delete_elem(C.int(mapFD), unsafe.Pointer(&k[0]))
+	return err
+}
+
 //--------------------------------------
 // The following is for ebpfwin functions
 

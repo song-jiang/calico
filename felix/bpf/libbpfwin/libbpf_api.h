@@ -156,6 +156,15 @@ void bpf_map__lookup_elem(int fd, const void *key, const void *value) {
     return;
 }
 
+void bpf_map__delete_elem(int fd, const void *key) {
+    int error = bpf_map_delete_elem(fd, key);
+    if (error != 0) {
+        fprintf(stderr, "Failed to delete entry map: %d\n", errno);
+        set_errno(error);
+    }
+    return;
+}
+
 void bpf_map__update_elem(int fd, const void *key, const void *value, __u64 flags) {
     int error = bpf_map_update_elem(fd, key, value, flags);
     if (error != 0) {
