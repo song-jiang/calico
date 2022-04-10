@@ -100,14 +100,14 @@ bool bpf_map__is_internal(const struct bpf_map *map)
 
 // The following is the function for syscall_windows
 // The following is the function for syscall_windows
-void bpf_map__get_info(int map_fd, struct bpf_map_info *p_map_info) { 
+void bpf_map__get_info(uint32_t map_fd, struct bpf_map_info *p_map_info) { 
     uint32_t map_info_size = sizeof(*p_map_info);
     int err = bpf_obj_get_info_by_fd(map_fd, p_map_info, &map_info_size);
 	set_errno(err);
     return;
 }
 
-int bpf_map__get_map_fd_by_id(int id) {
+uint32_t bpf_map__get_map_fd_by_id(uint32_t id) {
     // Verify that the map still exists.
     int map_fd = bpf_map_get_fd_by_id(id);
     if (map_fd <= 0) {
@@ -117,7 +117,7 @@ int bpf_map__get_map_fd_by_id(int id) {
     return map_fd;
 }
 
-int
+uint32_t
 bpf_program__load_bytecode(
     enum bpf_prog_type type,
     void *insns,
@@ -127,7 +127,7 @@ bpf_program__load_bytecode(
     void* log_buf,
     size_t log_buf_sz)
 {
-    int program_fd = bpf_load_program(type, (struct ebpf_inst*)insns, insns_cnt, license, kern_version, log_buf, log_buf_sz);
+    uint32_t program_fd = bpf_load_program(type, (struct ebpf_inst*)insns, insns_cnt, license, kern_version, log_buf, log_buf_sz);
     fprintf(stdout, "Load program with fd: %d\n", program_fd);
     if (program_fd <= 0) {
         set_errno(ENOENT);
@@ -147,7 +147,7 @@ bpf_program__load_bytecode(
     return program_fd;
 }
 
-void bpf_map__lookup_elem(int fd, const void *key, const void *value) {
+void bpf_map__lookup_elem(uint32_t fd, const void *key, const void *value) {
     int error = bpf_map_lookup_elem(fd, key, value);
     if (error != 0) {
         fprintf(stderr, "Failed to get entry map: %d\n", errno);
@@ -156,7 +156,7 @@ void bpf_map__lookup_elem(int fd, const void *key, const void *value) {
     return;
 }
 
-void bpf_map__delete_elem(int fd, const void *key) {
+void bpf_map__delete_elem(uint32_t fd, const void *key) {
     int error = bpf_map_delete_elem(fd, key);
     if (error != 0) {
         fprintf(stderr, "Failed to delete entry map: %d\n", errno);
@@ -165,7 +165,7 @@ void bpf_map__delete_elem(int fd, const void *key) {
     return;
 }
 
-void bpf_map__update_elem(int fd, const void *key, const void *value, __u64 flags) {
+void bpf_map__update_elem(uint32_t fd, const void *key, const void *value, __u64 flags) {
     int error = bpf_map_update_elem(fd, key, value, flags);
     if (error != 0) {
         fprintf(stderr, "Failed to update map: %d\n", errno);

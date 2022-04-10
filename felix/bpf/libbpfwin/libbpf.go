@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ebpfwin
+package libbpfwin
 
 // #include "libbpf_api.h"
 import "C"
@@ -169,19 +169,19 @@ func NumPossibleCPUs() (int, error) {
 }
 
 // The following is the function for syscall_windows
-func GetMapFDByID(mapID int) (int, error) {
-	fd, err := C.bpf_map__get_map_fd_by_id(C.int(mapID))
+func GetMapFDByID(mapID int) (uint32, error) {
+	fd, err := C.bpf_map__get_map_fd_by_id(C.uint(mapID))
 	if err != nil {
 		return 0, err
 	}
 
-	return int(fd), nil
+	return uint32(fd), nil
 }
 
-func GetMapInfo(fd int) (int, int, int, int, error) {
+func GetMapInfo(fd uint32) (int, int, int, int, error) {
 	var map_info C.struct_bpf_map_info
 	// _, err := C.bpf_map_get_info(C.int(fd), (*C.struct_bpf_map_info)(unsafe.Pointer(&map_info)))
-	_, err := C.bpf_map__get_info(C.int(fd), &map_info)
+	_, err := C.bpf_map__get_info(C.uint(fd), &map_info)
 	if err != nil {
 		return 0, 0, 0, 0, fmt.Errorf("Error get map info with fd %d: %w", fd, err)
 	}
@@ -192,7 +192,7 @@ func GetMapInfo(fd int) (int, int, int, int, error) {
 		nil
 }
 
-func LoadBPFProgramFromInsns(insns asm.Insns, license string, progType uint32) (int, error) {
+func LoadBPFProgramFromInsns(insns asm.Insns, license string, progType uint32) (uint32, error) {
 	cInsnBytes := C.CBytes(insns.AsBytes())
 	defer C.free(cInsnBytes)
 	cLicense := C.CString(license)
@@ -222,26 +222,26 @@ func LoadBPFProgramFromInsns(insns asm.Insns, license string, progType uint32) (
 	if err != nil {
 		return 0, err
 	}
-	return int(fd), nil
+	return uint32(fd), nil
 }
 
-func UpdateMapEntry(mapFD int, k, v []byte) error {
+func UpdateMapEntry(mapFD uint32, k, v []byte) error {
 	cK := C.CBytes(k)
 	defer C.free(cK)
 	cV := C.CBytes(v)
 	defer C.free(cV)
 
-	_, err := C.bpf_map__update_elem(C.int(mapFD), cK, cV, 0)
+	_, err := C.bpf_map__update_elem(C.uint(mapFD), cK, cV, 0)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func GetMapEntry(mapFD int, k []byte, valueSize int) ([]byte, error) {
+func GetMapEntry(mapFD uint32, k []byte, valueSize int) ([]byte, error) {
 	val := make([]byte, valueSize)
 
-	_, err := C.bpf_map__lookup_elem(C.int(mapFD), unsafe.Pointer(&k[0]), unsafe.Pointer(&val[0]))
+	_, err := C.bpf_map__lookup_elem(C.uint(mapFD), unsafe.Pointer(&k[0]), unsafe.Pointer(&val[0]))
 	if err != nil {
 		return nil, err
 	}
@@ -249,8 +249,8 @@ func GetMapEntry(mapFD int, k []byte, valueSize int) ([]byte, error) {
 	return val, nil
 }
 
-func DeleteMapEntry(mapFD int, k []byte, valueSize int) error {
-	_, err := C.bpf_map__delete_elem(C.int(mapFD), unsafe.Pointer(&k[0]))
+func DeleteMapEntry(mapFD uint32, k []byte, valueSize int) error {
+	_, err := C.bpf_map__delete_elem(C.uint(mapFD), unsafe.Pointer(&k[0]))
 	return err
 }
 

@@ -14,25 +14,19 @@
 
 package bpf
 
+// #include "bpf_syscall_windows.h"
+import "C"
 import (
+	"fmt"
 	"reflect"
 	"runtime"
-	"strings"
-	"syscall"
-	"time"
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
 
 	"github.com/projectcalico/calico/felix/bpf/asm"
-	"github.com/projectcalico/calico/felix/bpf/bpfutils"
 	"github.com/projectcalico/calico/felix/bpf/libbpfwin"
-
-	"golang.org/x/sys/unix"
 )
-
-// #include "bpf_syscall_windows.h"
-import "C"
 
 func SyscallSupport() bool {
 	return true
@@ -42,26 +36,27 @@ func GetMapFDByPin(filename string) (MapFD, error) {
 	log.Debugf("GetMapFDByPin(%v)", filename)
 	// TODO
 
-	return 0, fmt.Error("TODO, not implemented.")
+	return 0, fmt.Errorf("TODO, not implemented.")
 }
 
 func GetMapFDByID(mapID int) (MapFD, error) {
-	return libbpfwin.GetMapFDByID(mapID)
+	fd, err := libbpfwin.GetMapFDByID(mapID)
+	return MapFD(fd), err
 }
 
 const defaultLogSize = 1024 * 1024
 const maxLogSize = 128 * 1024 * 1024
 
-func LoadBPFProgramFromInsns(insns asm.Insns, license string, progType uint32) (fd ProgFD, err error) {
+func LoadBPFProgramFromInsns(insns asm.Insns, license string, progType uint32) (ProgFD, error) {
 	log.Debugf("LoadBPFProgramFromInsns(%v, %v, %v)", insns, license, progType)
 	fd, err := libbpfwin.LoadBPFProgramFromInsns(insns, license, progType)
 	return ProgFD(fd), err
 }
 
-func RunBPFProgram(fd ProgFD, dataIn []byte, repeat int) (pr ProgResult, err error) {
+func RunBPFProgram(fd ProgFD, dataIn []byte, repeat int) (ProgResult, error) {
 	log.Debugf("RunBPFProgram(%v, ..., %v)， not supported on Windows yet", fd, repeat)
 
-	return nil, nil
+	return ProgResult{}, nil
 }
 
 func UpdateMapEntry(mapFD MapFD, k, v []byte) error {
@@ -72,13 +67,13 @@ func UpdateMapEntry(mapFD MapFD, k, v []byte) error {
 		return err
 	}
 
-	return libbpfwin.UpdateMapEntry(mapFD, k, v)
+	return libbpfwin.UpdateMapEntry(uint32(mapFD), k, v)
 }
 
 func GetMapEntry(mapFD MapFD, k []byte, valueSize int) ([]byte, error) {
 	log.Debugf("GetMapEntry(%v, %v, %v)", mapFD, k, valueSize)
 
-	return libbpfwin.GetMapEntry(mapFD, k, valueSize)
+	return libbpfwin.GetMapEntry(uint32(mapFD), k, valueSize)
 }
 
 func checkMapIfDebug(mapFD MapFD, keySize, valueSize int) error {
@@ -87,7 +82,7 @@ func checkMapIfDebug(mapFD MapFD, keySize, valueSize int) error {
 }
 
 func GetMapInfo(fd MapFD) (*MapInfo, error) {
-	mapType, keySize, valueSize, maxEntries, err := libbpfwin.GetMapInfo(int(fd))
+	mapType, keySize, valueSize, maxEntries, err := libbpfwin.GetMapInfo(uint32(fd))
 	if err != nil {
 		return nil, err
 	}
@@ -107,15 +102,18 @@ func DeleteMapEntry(mapFD MapFD, k []byte, valueSize int) error {
 		return err
 	}
 
-	return libbpfwin.DeleteMapEntry(mapFD, k, valueSize)
+	return libbpfwin.DeleteMapEntry(uint32(mapFD), k, valueSize)
 }
+
+const ENOENT = 3025
 
 func DeleteMapEntryIfExists(mapFD MapFD, k []byte, valueSize int) error {
 	err := DeleteMapEntry(mapFD, k, valueSize)
-	if err == unix.ENOENT {
-		// Delete failed because entry did not exist.
-		err = nil
-	}
+	//if err == ENOENT {
+	// Delete failed because entry did not exist.
+	// err = nil
+	// }
+
 	return err
 }
 
@@ -211,13 +209,14 @@ func NewMapIterator(mapFD MapFD, keySize, valueSize, maxEntries int) (*MapIterat
 func (m *MapIterator) Next() (k, v []byte, err error) {
 	if m.numEntriesLoaded == m.entryIdx {
 		// Need to load a new batch of KVs from the kernel.
-		var count C.int
-		rc := C.bpf_map_load_multi(C.uint(m.mapFD), m.keyBeforeNextBatch, MapIteratorNumKeys, C.int(m.keyStride), m.keys, C.int(m.valueStride), m.values)
+		//var count C.int
+		//rc := C.bpf_map_load_multi(C.uint(m.mapFD), m.keyBeforeNextBatch, MapIteratorNumKeys, C.int(m.keyStride), m.keys, C.int(m.valueStride), m.values)
+		rc := 0
 		if rc < 0 {
-			err = unix.Errno(-rc)
-			return
+			// err = unix.Errno(-rc)
+			return //TODO
 		}
-		count = rc
+		count := rc
 		if count == 0 {
 			// No error but no keys either.  We're done.
 			err = ErrIterationFinished

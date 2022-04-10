@@ -15,12 +15,10 @@
 package bpf
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -40,6 +38,7 @@ func (b *PinnedMap) oldMapExists() bool {
 }
 
 func (b *PinnedMap) EnsureExists() error {
+	oldMapPath := b.Path() + "_old"
 	copyData := false
 	if b.fdLoaded {
 		return nil
