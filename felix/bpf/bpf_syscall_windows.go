@@ -209,14 +209,13 @@ func NewMapIterator(mapFD MapFD, keySize, valueSize, maxEntries int) (*MapIterat
 func (m *MapIterator) Next() (k, v []byte, err error) {
 	if m.numEntriesLoaded == m.entryIdx {
 		// Need to load a new batch of KVs from the kernel.
-		//var count C.int
-		//rc := C.bpf_map_load_multi(C.uint(m.mapFD), m.keyBeforeNextBatch, MapIteratorNumKeys, C.int(m.keyStride), m.keys, C.int(m.valueStride), m.values)
-		rc := 0
+		var count C.int
+		rc := C.bpf_map_load_multi(C.uint(m.mapFD), m.keyBeforeNextBatch, MapIteratorNumKeys, C.int(m.keyStride), m.keys, C.int(m.valueStride), m.values)
 		if rc < 0 {
 			// err = unix.Errno(-rc)
 			return //TODO
 		}
-		count := rc
+		count = rc
 		if count == 0 {
 			// No error but no keys either.  We're done.
 			err = ErrIterationFinished
