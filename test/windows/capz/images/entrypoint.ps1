@@ -14,6 +14,10 @@ cd c:\temp
 Write-Host "Install ebpf-for-windows ..."
 .\install-ebpf.bat
 
-write-host "Sleep 5 minutes"
-sleep 300
+$filePath = 'C:\exit-ebpfwin-container.txt'
+while (-not (Test-Path -Path $filePath)) {
+    ## Wait a specific interval
+    Start-Sleep -Seconds 5
+}
+
 write-host "All done."
