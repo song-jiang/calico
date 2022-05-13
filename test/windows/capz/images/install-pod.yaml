@@ -16,7 +16,7 @@ spec:
     image: docker.io/songtjiang/ebpfwin-install:01
     imagePullPolicy: Always
     args:
-    - ".\\entrypoint.ps1"
+    - ".\\install-ebpf-for-windows.ps1"
   nodeSelector:
     beta.kubernetes.io/os: windows
   nodeName: win-p-win000001

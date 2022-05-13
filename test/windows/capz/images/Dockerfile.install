@@ -1,3 +1,7 @@
+# Copyright (c) Microsoft Corporation
+# SPDX-License-Identifier: MIT
+
+ARG RELEASE_ZIP="ebpf-for-windows-c-temp.zip"
 ARG WINDOWS_VERSION="1809"
 
 # The files in this image are copied to $env:CONTAINER_SANDBOX_MOUNT_POINT on the host.
@@ -5,9 +9,7 @@ FROM mcr.microsoft.com/windows/nanoserver:${WINDOWS_VERSION}
 
 ENV PATH="C:\Program Files\PowerShell;C:\utils;C:\Windows\system32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0;"
 
-COPY  ebpf-win-temp-e56e80.zip /ebpf-win-temp.zip
-COPY  entrypoint.ps1 /
+COPY  ${RELEASE_ZIP} /ebpf-for-windows-c-temp.zip
+COPY  install-ebpf-for-windows.ps1 /
 
-# The nanoserver image does not have powershell but this works because
-# this container will be running on the host.
 ENTRYPOINT ["powershell"]
