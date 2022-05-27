@@ -22,6 +22,8 @@ import (
 	"syscall"
 	"unsafe"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/projectcalico/calico/felix/bpf/asm"
 	"github.com/projectcalico/calico/felix/bpf/bpfutils"
 )
@@ -214,6 +216,10 @@ func CreateMap(map_type string, key_size int, value_size int, max_entries int, m
 	if !exist {
 		return -1, fmt.Errorf("Invalid map type")
 	}
+
+	log.Infof("Create map: mapType %d, key_size %d, value_size %d, max_entries %d, map_flags %d\n",
+		mapType, key_size, value_size, max_entries, map_flags)
+
 	fd := C.bpf_map__create(
 		C.enum_bpf_map_type(mapType),
 		C.int(key_size),
