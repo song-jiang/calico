@@ -192,6 +192,42 @@ func GetMapInfo(fd uint32) (int, int, int, int, error) {
 		nil
 }
 
+// Enum defined in ebpf-for-windows/include/ebpf_structs.h
+var TypeStringToMapType = map[string]int{
+	"hash":            1,
+	"array":           2,
+	"prog_array":      3,
+	"percpu_hash":     4,
+	"percpu_array":    5,
+	"hash_of_maps":    6,
+	"array_of_maps":   7,
+	"lru_hash":        8,
+	"lpm_trie":        9,
+	"queue":           10,
+	"lru_percpu_hash": 11,
+	"stack":           12,
+	"ringbuf":         13,
+}
+
+func CreateMap(map_type string, key_size int, value_size int, max_entries int, map_flags uint32) (int, error) {
+	mapType, exist := TypeStringToMapType[map_type]
+	if !exist {
+		return -1, fmt.Errorf("Invalid map type")
+	}
+	fd := C.bpf_map__create(
+		C.enum_bpf_map_type(mapType),
+		C.int(key_size),
+		C.int(value_size),
+		C.int(max_entries),
+		C.uint(map_flags),
+	)
+
+	if int(fd) <= 0 {
+		return -1, fmt.Errorf("Failed to create map")
+	}
+	return int(fd), nil
+}
+
 func LoadBPFProgramFromInsns(insns asm.Insns, license string, progType uint32) (uint32, error) {
 	cInsnBytes := C.CBytes(insns.AsBytes())
 	defer C.free(cInsnBytes)

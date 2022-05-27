@@ -117,6 +117,24 @@ uint32_t bpf_map__get_map_fd_by_id(uint32_t id) {
     return map_fd;
 }
 
+int bpf_map__create(enum bpf_map_type map_type, int key_size, int value_size, int max_entries, uint32_t map_flags) {
+    // Create a map.
+    int map_fd = bpf_create_map(map_type, key_size, value_size, max_entries, map_flags);
+    if (map_fd <= 0) {
+        fprintf(stderr, "Failed to create map for prog array: %d\n", errno);
+        return -1;
+    }
+
+    struct bpf_map_info map_info;
+    uint32_t map_info_size = sizeof(map_info);
+    if (bpf_obj_get_info_by_fd(map_fd, &map_info, &map_info_size) < 0) {
+        return -1;
+    }
+
+    fprintf(stdout, "Created map : {name: %s, type: %d, fd: %d}\n", map_info.name, map_info.type, map_fd);
+    return map_fd;
+}
+
 uint32_t
 bpf_program__load_bytecode(
     enum bpf_prog_type type,
