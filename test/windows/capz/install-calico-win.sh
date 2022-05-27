@@ -14,6 +14,8 @@
 # limitations under the License.
 set -x
 
+. export-env.sh
+
 # strict affinity
 curl -L https://github.com/projectcalico/calico/releases/download/v3.22.2/calicoctl-linux-amd64 -o calicoctl
 chmod +x calicoctl
@@ -23,19 +25,14 @@ export CALICO_KUBECONFIG=./kubeconfig
 ./calicoctl ipam configure --strictaffinity=true --allow-version-mismatch
 echo "ipam configured with strict affinity"
 
-exit 0
-
 # Install on Windows side
+# Copy calico-felix.exe
+cp ${CALICO_SRC_DIR}/felix/bin/calico-felix.exe ./windows
 
-# Copy installation script
+# Copy kubeconfig
 ./scp-node.sh 6 kubeconfig c:\k\kubeconfig
 
 # Prepare ps1 files
-curl -LO https://docs.projectcalico.org/scripts/install-calico-windows.ps1
+curl -L https://docs.projectcalico.org/scripts/install-calico-windows.ps1 -o windows/install-calico-windows.ps1
 
-./scp-node.sh 6 '*.ps1' 'c:\k'
-
-./ssh-node.sh 6 'c:\\k\\install-ebpf-win.ps1'
-
-./ssh-node.sh 6 'c:\\k\\run-fv-full.ps1'
-
+./scp-node.sh 6 './windows/*' 'c:\k'
