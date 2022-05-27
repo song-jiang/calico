@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: preinstall
+  labels:
+    app: preinstall
+spec:
+  securityContext:
+    windowsOptions:
+      hostProcess: true
+      runAsUserName: "NT AUTHORITY\\system"
+  hostNetwork: true
+  containers:
+  - name: preinstall
+    image: docker.io/songtjiang/capz-preinstall:01
+    imagePullPolicy: Always
+    args:
+    - ".\\capz-preinstall.ps1"
+  nodeSelector:
+    beta.kubernetes.io/os: windows
+  nodeName: win-p-win000001
