@@ -18,8 +18,6 @@ import (
 	"fmt"
 	"os"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/projectcalico/calico/felix/bpf"
 	"github.com/projectcalico/calico/felix/bpf/failsafes"
 	"github.com/projectcalico/calico/felix/bpf/ipsets"
@@ -40,11 +38,7 @@ func CreateBPFMapContext(ipsetsMapSize, natFEMapSize, natBEMapSize, natAffMapSiz
 }
 
 func MigrateDataFromOldMap(mc *bpf.MapContext) {
-	ctMap := mc.CtMap
-	err := ctMap.CopyDeltaFromOldMap()
-	if err != nil {
-		log.WithError(err).Debugf("Failed to copy data from old conntrack map %s", err)
-	}
+	return
 }
 
 func DestroyBPFMaps(mc *bpf.MapContext) {

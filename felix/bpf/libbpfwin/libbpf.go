@@ -217,6 +217,11 @@ func CreateMap(map_type string, key_size int, value_size int, max_entries int, m
 		return -1, fmt.Errorf("Invalid map type")
 	}
 
+	if mapType == 9 {
+		mapType = 2
+	}
+	map_flags = 0
+
 	log.Infof("Create map: mapType %d, key_size %d, value_size %d, max_entries %d, map_flags %d\n",
 		mapType, key_size, value_size, max_entries, map_flags)
 
