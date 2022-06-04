@@ -14,6 +14,7 @@ Remove-FelixService
 sleep 5
 
 # you may add code here to copy latest calico-felix.exe
+cp c:\k\calico-felix.exe $PSScriptRoot
 
 # Remove CalicoFelix logs and flow logs
 rm $PSScriptRoot\logs\calico-felix*.log
