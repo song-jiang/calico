@@ -217,6 +217,7 @@ func CreateMap(map_type string, key_size int, value_size int, max_entries int, m
 		return -1, fmt.Errorf("Invalid map type")
 	}
 
+	// FIXME. Set to array type if map type is lpm_trie
 	if mapType == 9 {
 		mapType = 2
 	}
