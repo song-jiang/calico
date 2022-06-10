@@ -132,6 +132,6 @@ timeout --foreground 600 bash -c "while ! ${KCAPZ} get nodes | grep ${KUBE_VERSI
 
 echo seen all nodes
 
-ID0=`${kcapz} get node -o wide | grep win-p-win000000 | awk '{print $6}' | awk -F '.' '{print $4}'`
-ID1=`${kcapz} get node -o wide | grep win-p-win000001 | awk '{print $6}' | awk -F '.' '{print $4}'`
+ID0=`${KCAPZ} get node -o wide | grep win-p-win000000 | awk '{print $6}' | awk -F '.' '{print $4}'`
+ID1=`${KCAPZ} get node -o wide | grep win-p-win000001 | awk '{print $6}' | awk -F '.' '{print $4}'`
 echo "ID0: $ID0, ID1:$ID1"
