@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: preinstall
+  namespace: kube-system
+  labels:
+    k8s-app: preinstall
+spec:
+  selector:
+    matchLabels:
+      k8s-app: preinstall
+  template:
+    metadata:
+      labels:
+        k8s-app: preinstall
+    spec:
+      tolerations:
+      - operator: Exists
+      securityContext:
+        windowsOptions:
+          hostProcess: true
+          runAsUserName: "NT AUTHORITY\\system"
+      hostNetwork: true
+      containers:
+      - name: preinstall
+        image: docker.io/songtjiang/capz-preinstall:01
+        imagePullPolicy: Always
+        args:
+        - ".\\capz-preinstall.ps1"
+        env:
+        - name: ENABLE_TEST_SIGNING
+          value: "true"
+      nodeSelector:
+        kubernetes.io/os: windows
