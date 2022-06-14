@@ -16,8 +16,6 @@ set -x
 
 . export-env.sh
 
-ID0="6"
-
 # strict affinity
 curl -L https://github.com/projectcalico/calico/releases/download/v3.22.2/calicoctl-linux-amd64 -o calicoctl
 chmod +x calicoctl
@@ -30,10 +28,11 @@ echo "ipam configured with strict affinity"
 # Install on Windows side
 
 # Copy kubeconfig
-./scp-node.sh $ID0 kubeconfig c:\k\kubeconfig
+./scp-node.sh $ID0 './kubeconfig' 'c:\k\config'
 
 # Copy calico-felix.exe
-# cp ${CALICO_SRC_DIR}/felix/bin/calico-felix.exe ./windows
+cp ${CALICO_SRC_DIR}/felix/bin/calico-felix.exe ./windows
+
 # Prepare ps1 files
 curl -L https://docs.projectcalico.org/scripts/install-calico-windows.ps1 -o windows/install-calico-windows.ps1
 

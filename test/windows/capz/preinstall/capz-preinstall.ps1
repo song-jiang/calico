@@ -49,13 +49,16 @@ if ($env:CONTAINER_SANDBOX_MOUNT_POINT) {
 
 ipmo $ns\hns.psm1 -Force -DisableNameChecking
 
+# This step would restart computer. Create external network after this.
+if ($env:ENABLE_TEST_SIGNING) {
+    EnableTestSigning
+}
+
 # Create external network as part of pre-install. This is to avoid network disruption on the follow-on ssh commands.
 $env:CALICO_NETWORKING_BACKEND = "vxlan"
 CreateExternalNetwork
-
 Write-Host "External network done."
 
-EnableTestSigning
 
 # Sleep until the container is required to exit explicitly. This is for dev only.
 # TODO: If this container is running as an init container of a daemonset, 

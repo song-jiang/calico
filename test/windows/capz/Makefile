@@ -1,6 +1,7 @@
 CURRENT_DIR=$(shell pwd)
 BINDIR?=bin
 ARCH?=amd64
+KCAPZ?=./bin/kubectl --kubeconfig=./kubeconfig
 
 ###############################################################################
 # Cluster management
@@ -21,6 +22,30 @@ delete-cluster: $(BINDIR)/kind $(BINDIR)/kubectl
 .PHONY: install-calico
 install-calico:
 	./install-calico.sh
+
+.PHONY: windows-preinstall
+windows-preinstall:
+	@echo 'Applying preinstall windows manifest'
+	$(KCAPZ) apply -f manifests/preinstall-for-windows-daemonset.yaml 
+	time $(KCAPZ) wait pod -l k8s-app=preinstall --for=condition=Ready -n kube-system --timeout=300s
+ 
+.PHONY: windows-ebpf-install
+windows-ebpf-install:
+	@echo 'Applying ebpf windows manifest'
+	$(KCAPZ) apply -f manifests/ebpf-for-windows-daemonset.yaml
+	time $(KCAPZ) wait pod -l k8s-app=ebpf-for-windows --for=condition=Ready -n kube-system --timeout=300s
+ 
+###############################################################################
+# Image management
+###############################################################################
+.PHONY: image-preinstall
+image-preinstall:
+	cd ./preinstall; ./build-images.sh
+
+.PHONY: image-ebpf-win
+image-ebpf-win:
+	cd ./images; ./build-images.sh
+
 
 ###############################################################################
 # Utilities management

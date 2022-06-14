@@ -16,8 +16,6 @@ set -x
 
 . export-env.sh
 
-ID0="6"
-
 # Copy calico-felix.exe
 cp ${CALICO_SRC_DIR}/felix/bin/calico-felix.exe ./windows
 

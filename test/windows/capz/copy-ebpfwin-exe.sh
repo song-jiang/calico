@@ -16,9 +16,10 @@ set -x
 
 . export-env.sh
 
-ID0="6"
-
 # Copy calico-felix.exe
 cp ${CALICO_SRC_DIR}/felix/bin/ebpfwin.exe ./windows
 
 ./scp-node.sh $ID0 './windows/ebpfwin.exe' 'c:\k'
+
+# Copy to staging
+scp -i /home/song/cred/song-fv/master_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ./windows/ebpfwin.exe song@20.117.69.118:/home/song
