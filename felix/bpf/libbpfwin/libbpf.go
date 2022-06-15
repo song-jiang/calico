@@ -217,13 +217,13 @@ func CreateMap(map_type string, key_size int, value_size int, max_entries int, m
 		return -1, fmt.Errorf("Invalid map type")
 	}
 
-	// FIXME. Set to array type if map type is lpm_trie
-	if mapType == 9 {
-		mapType = 2
-	}
+	log.Infof("Create map before fixing for windows: mapType %d, key_size %d, value_size %d, max_entries %d, map_flags %d\n",
+		mapType, key_size, value_size, max_entries, map_flags)
+
+	// Have to set map flags to 0 for Windows.
 	map_flags = 0
 
-	log.Infof("Create map: mapType %d, key_size %d, value_size %d, max_entries %d, map_flags %d\n",
+	log.Infof("Create map after fixing for windows: mapType %d, key_size %d, value_size %d, max_entries %d, map_flags %d\n",
 		mapType, key_size, value_size, max_entries, map_flags)
 
 	fd := C.bpf_map__create(

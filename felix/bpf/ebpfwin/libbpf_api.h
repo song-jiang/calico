@@ -248,8 +248,7 @@ int run_load_program() {
     };
 
     // Load and verify the eBPF program.
-    int size = sizeof(instructions)/sizeof(instructions[0]);
-    int program_fd = bpf_load_program(BPF_PROG_TYPE_XDP, instructions, size, nullptr, 0, nullptr, 0);
+    int program_fd = bpf_load_program(BPF_PROG_TYPE_XDP, instructions, _countof(instructions), nullptr, 0, nullptr, 0);
     fprintf(stdout, "Load program with fd: %d\n", program_fd);
 
     // Now query the program info and verify it matches what we set.

@@ -270,9 +270,8 @@ int run_load_program() {
     };
 
     // Load and verify the eBPF program.
-    int size = sizeof(instructions)/sizeof(instructions[0]);
-    int program_fd = bpf_load_program(BPF_PROG_TYPE_XDP, instructions, size, nullptr, 0, nullptr, 0);
-    fprintf(stdout, "Load program with fd: %d\n", program_fd);
+    int program_fd = bpf_load_program(BPF_PROG_TYPE_XDP, instructions, _countof(instructions), nullptr, 0, nullptr, 0);
+    fprintf(stderr, "Song 03: Load program with fd: %d\n", program_fd);
 
     // Now query the program info and verify it matches what we set.
     struct bpf_prog_info program_info;
@@ -284,10 +283,11 @@ int run_load_program() {
 
     // TODO(issue #223): change below to BPF_PROG_TYPE_XDP.
     // REQUIRE(program_info.type == BPF_PROG_TYPE_UNSPEC);
-    fprintf(stdout, "bpf_prog_info { name: %s, type: %d }\n", program_info.name, program_info.type);
+    fprintf(stderr, "bpf_prog_info { name: %s, type: %d }\n", program_info.name, program_info.type);
 
     // Create a map.
-    int map_fd = bpf_create_map(BPF_MAP_TYPE_PROG_ARRAY, sizeof(uint32_t), sizeof(uint32_t), 2, 0);
+    // int map_fd = bpf_create_map(BPF_MAP_TYPE_PROG_ARRAY, sizeof(uint32_t), sizeof(uint32_t), 2, 0);
+    int map_fd = bpf_create_map(BPF_MAP_TYPE_LPM_TRIE, sizeof(uint32_t) * 2, sizeof(uint64_t), 10, 0);
     if (map_fd <= 0) {
         fprintf(stderr, "Failed to create map for prog array: %d\n", errno);
         return -1;
@@ -299,7 +299,7 @@ int run_load_program() {
         return -1;
     }
 
-    fprintf(stdout, "Created map : {name: %s, type: %d, fd: %d}\n", map_info.name, map_info.type, map_fd);
+    fprintf(stderr, "Created map : {name: %s, type: %d, fd: %d}\n", map_info.name, map_info.type, map_fd);
 
     // Since the map is not yet associated with a program, the first program fd
     // we add will become the PROG_ARRAY's program type.
@@ -310,7 +310,7 @@ int run_load_program() {
         return -1;
     }
 
-    fprintf(stdout, "Done!All good.\n");
+    fprintf(stderr, "Done!All good.\n");
 
     close(map_fd);
     close(program_fd);
@@ -342,7 +342,6 @@ enum {
 };
 
 int xsk_prog_load() {
-    int detected = 0;
 	struct bpf_load_program_attr prog_attr;
 	struct bpf_create_map_attr map_attr;
 	__u32 size_out, retval, duration;
@@ -359,11 +358,14 @@ int xsk_prog_load() {
 	map_attr.value_size = sizeof(int);
 	map_attr.max_entries = 1;
 
+    fprintf(stderr, "Start create map\n");
+
 	map_fd = bpf_create_map_xattr(&map_attr);
 	if (map_fd < 0)
-        fprintf(stdout, "Failed to create map: %d\n", errno);
-		return detected;
+        fprintf(stderr, "Failed to create map: %d\n", errno);
+		return -1;
 
+     fprintf(stderr, "Start create map done\n");
 	//insns[0].imm = map_fd;
 
 	memset(&prog_attr, 0, sizeof(prog_attr));
@@ -372,16 +374,18 @@ int xsk_prog_load() {
 	prog_attr.insns_cnt = sizeof(insns)/sizeof(insns[0]);
 	prog_attr.license = "GPL";
 
+    fprintf(stderr, "Start load program\n");
+
 	prog_fd = bpf_load_program_xattr(&prog_attr, NULL, 0);
 	if (prog_fd < 0) {
-        fprintf(stdout, "Failed to load program: %d\n", errno);
+        fprintf(stderr, "Failed to load program: %d\n", errno);
 		close(map_fd);
-		return detected;
+		return -1;
 	}
 
-    fprintf(stdout, "Done!All good. %d, %d\n", prog_fd, map_fd);
+    fprintf(stderr, "Done!All good. %d, %d\n", prog_fd, map_fd);
 
 	close(prog_fd);
 	close(map_fd);
-	return detected;
+	return 0;
 }

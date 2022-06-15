@@ -211,6 +211,7 @@ func NewWinDataplaneDriver(hns hns.API, config Config) *WindowsDataplane {
 		log.Info("VXLAN disabled, not starting the VXLAN manager")
 	}
 
+	config.BPFMapSizeIPSets = 1024 * 1024 // WINBPF FIXME
 	bpfMapContext := bpfmap.CreateBPFMapContext(config.BPFMapSizeIPSets, 0,
 		0, 0, 0, 0, false)
 
