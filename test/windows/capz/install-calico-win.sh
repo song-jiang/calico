@@ -39,7 +39,7 @@ curl -L https://docs.projectcalico.org/scripts/install-calico-windows.ps1 -o win
 ./scp-node.sh $ID0 './windows/*' 'c:\k'
 
 # Run setup scripts
-./ssh-node.sh $ID0 'c:\k\setup-calico.ps1'
-./ssh-node.sh $ID0 'c:\k\setup-kube-services.ps1'
-./ssh-node.sh $ID0 'c:\k\setup-felix.ps1'
-./ssh-node.sh $ID0 'c:\k\restart-felix.ps1'
+# ./ssh-node.sh $ID0 'c:\k\setup-calico.ps1'
+# ./ssh-node.sh $ID0 'c:\k\setup-kube-services.ps1'
+# ./ssh-node.sh $ID0 'c:\k\setup-felix.ps1'
+# ./ssh-node.sh $ID0 'c:\k\restart-felix.ps1'
