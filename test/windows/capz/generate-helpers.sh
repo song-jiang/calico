@@ -27,5 +27,6 @@ echo
 SCP_FILE="scp-node.sh"
 echo "#---------Copy files to Instance--------" | tee ${SCP_FILE}
 echo "#usage: ./scp-node.sh 6 kubeconfig c:\\\\k\\\\kubeconfig -- copy kubeconfig to 10.1.0.6" | tee -a ${SCP_FILE}
+echo "#usage: ./scp-node.sh 6 images/ebpf-for-windows-c-temp.zip 'c:\\' -- copy temp zip to 10.1.0.6" | tee -a ${SCP_FILE}
 echo scp -i .sshkey -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o \'ProxyCommand ssh -i .sshkey -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -W %h:%p capi@${APISERVER}\' \$2 capi@10.1.0.\$1:\$3 | tee -a ${SCP_FILE}
 chmod +x ${SCP_FILE}
