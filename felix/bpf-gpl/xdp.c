@@ -29,7 +29,6 @@ typedef struct cali_tc_state cali_tc_state_t;
     //.size = sizeof(ebpf_map_definition_in_file_t), .type = BPF_MAP_TYPE_RINGBUF, .max_entries = 256 * 1024};
 #pragma clang section data = "maps"
 ebpf_map_definition_in_file_t trace_map = {
-    .size = sizeof(ebpf_map_definition_in_file_t),
     .type = BPF_MAP_TYPE_HASH,
     .key_size = sizeof(__be32),  //dest ip as key
     .value_size = sizeof(cali_tc_state_t),
@@ -131,7 +130,7 @@ static CALI_BPF_INLINE int calico_xdp(struct xdp_md *xdp)
 
 	// Jump to the policy program
 	//CALI_DEBUG("About to jump to policy program.\n");
-	//bpf_tail_call(xdp, &cali_jump, PROG_INDEX_POLICY);
+	bpf_tail_call(xdp, &cali_jump, PROG_INDEX_POLICY);
 	//bpf_tail_call(xdp, &cali_jump, 7);
 
 allow:
@@ -143,22 +142,34 @@ deny:
 	return XDP_DROP;
 }
 
+
+#ifndef CALI_ENTRYPOINT_NAME_XDP
+#define calico_entrypoint_xdp "xdp_prog"
+#define CALI_ENTRYPOINT_NAME_XDP calico_entrypoint_xdp
+#endif
+
+// Entrypoint with definable name.  It's useful to redefine the name for each entrypoint
+// because the name is exposed by bpftool et al.
+__attribute__((section(XSTR(CALI_ENTRYPOINT_NAME_XDP))))
+// SEC("xdp")
+int xdp_calico_entry(struct xdp_md *xdp)
+{
+	return calico_xdp(xdp);
+}
+
 /* This program contains "default" implementations of the policy program
  * which ip will load for us when we're attaching a program to a xdp hook.
  * This allows us to control the behaviour in the window before Felix replaces
  * the policy program with its generated version.*/
 
-/*
-__attribute__((section("calico_entrypoint_xdp/0")))
+SEC("xdp_prog/0")
 int calico_xdp_norm_pol_tail(struct xdp_md *xdp)
 {
 	//CALI_DEBUG("Entering normal policy tail call: PASS\n");
 	return XDP_PASS;
 }
-*/
 
-/*
-__attribute__((section("calico_entrypoint_xdp/1")))
+SEC("xdp_prog/1")
 int calico_xdp_accepted_entrypoint(struct xdp_md *xdp)
 {
 	//CALI_DEBUG("Entering calico_xdp_accepted_entrypoint\n");
@@ -167,19 +178,6 @@ int calico_xdp_accepted_entrypoint(struct xdp_md *xdp)
 		//CALI_DEBUG("Failed to set metadata for TC\n");
 	//}
 	return XDP_PASS;
-}
-*/
-
-#ifndef CALI_ENTRYPOINT_NAME_XDP
-#define CALI_ENTRYPOINT_NAME_XDP calico_entrypoint_xdp
-#endif
-
-// Entrypoint with definable name.  It's useful to redefine the name for each entrypoint
-// because the name is exposed by bpftool et al.
-__attribute__((section(XSTR(CALI_ENTRYPOINT_NAME_XDP))))
-int xdp_calico_entry(struct xdp_md *xdp)
-{
-	return calico_xdp(xdp);
 }
 
 char ____license[] __attribute__((section("license"), used)) = "GPL";
