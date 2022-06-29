@@ -141,6 +141,9 @@ func newEndpointManager(hns hnsInterface,
 		hostAddrs:           hostIPv4s,
 		bpfEnabled:          bpfEnabled,
 		bpfEndpointManager:  bpfEndpointManager,
+		hostIfaceToAddrs:    map[string]set.Set{"ethernet_32773": set.From("10.1.0.4")}, // Song fixme
+		rawHostEndpoints:    map[proto.HostEndpointID]*proto.HostEndpoint{},
+		hostEndpointsDirty:  true,
 	}
 }
 
@@ -169,11 +172,11 @@ func (m *endpointManager) OnUpdate(msg interface{}) {
 		log.WithField("profileId", msg.Id).Info("Processing ActiveProfileUpdate")
 		m.ProcessPolicyProfileUpdate(policysets.ProfileNamePrefix + msg.Id.Name)
 	case *proto.HostEndpointUpdate:
-		log.WithField("msg", msg).Debug("Host endpoint update")
+		log.WithField("msg", msg).Info("Host endpoint update")
 		m.rawHostEndpoints[*msg.Id] = msg.Endpoint
 		m.hostEndpointsDirty = true
 	case *proto.HostEndpointRemove:
-		log.WithField("msg", msg).Debug("Host endpoint removed")
+		log.WithField("msg", msg).Info("Host endpoint removed")
 		delete(m.rawHostEndpoints, *msg.Id)
 		m.hostEndpointsDirty = true
 	}
@@ -622,7 +625,7 @@ func (m *endpointManager) resolveHostEndpoints() map[string]proto.HostEndpointID
 		for id, hostEp := range m.rawHostEndpoints {
 			logCxt := ifaceCxt.WithField("id", id)
 			if forAllInterfaces(hostEp) {
-				logCxt.Debug("Skip all-interfaces host endpoint")
+				logCxt.Debugf("Skip all-interfaces host endpoint %v", hostEp)
 				continue
 			}
 			logCxt.WithField("bestHostEpId", bestHostEpId).Debug("See if HostEp matches interface")
