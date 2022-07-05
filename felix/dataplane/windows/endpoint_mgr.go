@@ -329,11 +329,15 @@ func (m *endpointManager) ProcessPolicyProfileUpdate(policySetId string) {
 // have already been processed by the various managers and we should now have a complete picture
 // of the policy/rules to be applied for each pending endpoint.
 func (m *endpointManager) CompleteDeferredWork() error {
+	log.Debug("Song CompleteDeferredWork")
 	if m.hostEndpointsDirty {
 		log.Debug("Host endpoints updated, resolving them.")
 		m.resolveHostEndpoints()
 		m.hostEndpointsDirty = false
 	}
+
+	// Song FIXME
+	return nil
 
 	m.pendingIPSetUpdate.Iter(func(item interface{}) error {
 		id := item.(string)
@@ -584,6 +588,15 @@ func loopPollingForInterfaceAddrs(c chan []string) {
 		log.WithField("update", ipv4s).Debug("Interface addresses updated.")
 		c <- ipv4s
 	}
+}
+
+func (m *endpointManager) ResolveUpdateBatch() error {
+	if m.hostEndpointsDirty {
+		log.Debug("ResolveUpdateBatch: Host endpoints updated, resolving them.")
+		m.resolveHostEndpoints()
+	}
+
+	return nil
 }
 
 func (m *endpointManager) resolveHostEndpoints() map[string]proto.HostEndpointID {

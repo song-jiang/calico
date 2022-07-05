@@ -18,12 +18,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
-	"os"
-	"os/exec"
 	"reflect"
 	"sort"
 	"sync"
@@ -284,7 +281,7 @@ func (m *bpfEndpointManager) onWorkloadEnpdointRemove(msg *proto.WorkloadEndpoin
 // onPolicyUpdate stores the policy in the cache and marks any endpoints using it dirty.
 func (m *bpfEndpointManager) onPolicyUpdate(msg *proto.ActivePolicyUpdate) {
 	polID := *msg.Id
-	log.WithField("id", polID).Debug("Policy update")
+	log.WithField("id", polID).Debugf("Song Policy update %v", msg.Policy)
 	m.policies[polID] = msg.Policy
 	m.markEndpointsDirty(m.policiesToWorkloads[polID], "policy")
 }
@@ -354,6 +351,7 @@ func (m *bpfEndpointManager) markExistingWEPDirty(wlID proto.WorkloadEndpointID,
 }
 
 func (m *bpfEndpointManager) CompleteDeferredWork() error {
+	log.Debug("Song CompleteDeferredWork")
 	// Do one-off initialisation.
 	m.dp.ensureStarted()
 
@@ -375,12 +373,17 @@ func (m *bpfEndpointManager) applyProgramsToDirtyDataInterfaces() {
 				"Ignoring interface that doesn't match the host data interface regex")
 			return nil
 		}
+
+		/* Song FIXME. always mark interface up
 		if !m.ifaceIsUp(iface) {
 			log.WithField("iface", iface).Debug("Ignoring interface that is down")
 			return set.RemoveItem
 		}
+		*/
 
 		m.opReporter.RecordOperation("update-data-iface")
+
+		log.WithField("iface", iface).Debug("Song applyProgramsToDirtyDataInterfaces start")
 
 		wg.Add(1)
 		go func() {
@@ -388,6 +391,7 @@ func (m *bpfEndpointManager) applyProgramsToDirtyDataInterfaces() {
 
 			var hepPtr *proto.HostEndpoint
 			if hep, hepExists := m.hostIfaceToEpMap[iface]; hepExists {
+				log.WithField("iface", iface).Debug("Song hep exists")
 				hepPtr = &hep
 			}
 			err := m.attachXDPProgram(iface, hepPtr)
@@ -472,6 +476,8 @@ func (m *bpfEndpointManager) attachXDPProgram(ifaceName string, ep *proto.HostEn
 		Modes:    m.xdpModes,
 	}
 
+	ap.Log().Debugf("Building program for untracked policy hep=%v, untrack=%v", ep.Name, ep.UntrackedTiers)
+
 	if ep != nil && len(ep.UntrackedTiers) == 1 {
 		jumpMapFD, err := m.dp.ensureProgramAttached(&ap)
 		if err != nil {
@@ -514,6 +520,8 @@ func (m *bpfEndpointManager) extractTiers(tier *proto.TierInfo, direction PolDir
 	if tier == nil {
 		return
 	}
+
+	log.Debugf("Song extract Tiers %v, %v", tier.IngressPolicies, m.policies)
 
 	directionalPols := tier.IngressPolicies
 	if direction == PolDirnEgress {
@@ -937,6 +945,8 @@ func (m *bpfEndpointManager) removePolicyProgram(jumpMapFD bpf.MapFD) error {
 func FindJumpMap(progIDStr, ifaceName string) (mapFD bpf.MapFD, err error) {
 	logCtx := log.WithField("progID", progIDStr).WithField("iface", ifaceName)
 	logCtx.Debugf("Looking up jump map")
+
+	/* Song FIXME
 	bpftool := exec.Command("bpftool", "prog", "show", "id", progIDStr, "--json")
 	output, err := bpftool.Output()
 	if err != nil {
@@ -947,13 +957,20 @@ func FindJumpMap(progIDStr, ifaceName string) (mapFD bpf.MapFD, err error) {
 		}
 		return 0, fmt.Errorf("failed to get map metadata: %w out=\n%v", err, string(output))
 	}
+	*/
+
 	var prog struct {
 		MapIDs []int `json:"map_ids"`
 	}
-	err = json.Unmarshal(output, &prog)
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse bpftool output: %w", err)
-	}
+
+	prog.MapIDs = append(prog.MapIDs, 851969)
+
+	/*
+		err = json.Unmarshal(output, &prog)
+		if err != nil {
+			return 0, fmt.Errorf("failed to parse bpftool output: %w", err)
+		}
+	*/
 
 	for _, mapID := range prog.MapIDs {
 		mapFD, err := bpf.GetMapFDByID(mapID)

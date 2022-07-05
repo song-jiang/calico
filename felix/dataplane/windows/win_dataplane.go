@@ -16,6 +16,7 @@ package windataplane
 
 import (
 	"math"
+	"reflect"
 	"regexp"
 	"time"
 
@@ -144,6 +145,14 @@ const (
 	healthName     = "win_dataplane"
 	healthInterval = 10 * time.Second
 )
+
+type UpdateBatchResolver interface {
+	// Opportunity for a manager component to resolve state that depends jointly on the updates
+	// that it has seen since the preceding CompleteDeferredWork call.  Processing here can
+	// include passing resolved state to other managers.  It should not include any actual
+	// dataplane updates yet.  (Those should be actioned in CompleteDeferredWork.)
+	ResolveUpdateBatch() error
+}
 
 // Interface for Managers. Each Manager is responsible for processing updates from felix and
 // for applying any necessary updates to the dataplane.
@@ -392,6 +401,22 @@ func (d *WindowsDataplane) loopUpdatingDataplane() {
 func (d *WindowsDataplane) apply() {
 	// Unset the needs-sync flag, a rescheduling kick will reset it later if something failed
 	d.dataplaneNeedsSync = false
+
+	// First, give the managers a chance to resolve any state based on the preceding batch of
+	// updates.  In some cases, e.g. EndpointManager, this can result in an update to another
+	// manager (BPFEndpointManager.OnHEPUpdate) that must happen before either of those managers
+	// begins its dataplane programming updates.
+	for _, mgr := range d.allManagers {
+		if handler, ok := mgr.(UpdateBatchResolver); ok {
+			err := handler.ResolveUpdateBatch()
+			if err != nil {
+				log.WithField("manager", reflect.TypeOf(mgr).Name()).WithError(err).Debug(
+					"couldn't resolve update batch for manager, will try again later")
+				d.dataplaneNeedsSync = true
+			}
+			d.reportHealth()
+		}
+	}
 
 	// Allow each of the managers to complete any deferred work.
 	scheduleRetry := false

@@ -42,7 +42,7 @@ func (b *PinnedMap) EnsureExists() error {
 		return nil
 	}
 
-	log.Info("Song 01: Map didn't exist, creating it")
+	log.Info("01: Map didn't exist, creating it")
 	fd, err := libbpfwin.CreateMap(
 		b.Type,
 		b.KeySize,
