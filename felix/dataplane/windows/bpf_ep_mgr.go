@@ -963,7 +963,8 @@ func FindJumpMap(progIDStr, ifaceName string) (mapFD bpf.MapFD, err error) {
 		MapIDs []int `json:"map_ids"`
 	}
 
-	prog.MapIDs = append(prog.MapIDs, 851969)
+	// SONG BPFTOOLID
+	prog.MapIDs = append(prog.MapIDs, 1048578)
 
 	/*
 		err = json.Unmarshal(output, &prog)

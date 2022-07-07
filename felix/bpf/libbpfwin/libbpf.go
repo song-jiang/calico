@@ -17,9 +17,11 @@ package libbpfwin
 // #include "libbpf_api.h"
 import "C"
 import (
+	"encoding/binary"
 	"fmt"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
@@ -90,6 +92,16 @@ func OpenObject(filename string) (*Obj, error) {
 	obj, err := C.bpf_obj_open(cFilename)
 	if obj == nil || err != nil {
 		return nil, fmt.Errorf("error opening libbpf object %w", err)
+	}
+	return &Obj{obj: obj}, nil
+}
+
+func LoadObject(filename string) (*Obj, error) {
+	cFilename := C.CString(filename)
+	defer C.free(unsafe.Pointer(cFilename))
+	obj, err := C.bpf_program__xdp_load(cFilename)
+	if obj == nil || err != nil {
+		return nil, fmt.Errorf("error loading libbpf object %w", err)
 	}
 	return &Obj{obj: obj}, nil
 }
@@ -311,6 +323,85 @@ func RunProgram() int {
 }
 
 func RunAnotherProgram() int {
-	id := C.xsk_prog_load()
+	// id := C.xsk_prog_load()
+	id := C.multiple_tail_calls_test()
 	return int(id)
+}
+
+func ObjectTest(path string, progName string) error {
+	obj, err := LoadObject(path)
+	if err != nil {
+		log.WithError(err).Errorf("Failed to open object file %s", path)
+		return err
+	}
+
+	m0, err := obj.FirstMap()
+	if err != nil {
+		log.WithError(err).Errorf("Failed to get first map %s", path)
+		return err
+	}
+
+	log.Infof("First map is %s", m0.Name())
+
+	m := m0
+	for {
+		m, err = m.NextMap()
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get first map %s", path)
+			return err
+		}
+
+		if m == nil {
+			log.Info("No more map available")
+			break
+		}
+
+		log.Infof("Next map is %s", m.Name())
+	}
+
+	cProgName := C.CString(progName)
+	defer C.free(unsafe.Pointer(cProgName))
+	progFD := C.bpf_program__get_fd(obj.obj, cProgName)
+
+	if progFD <= 0 {
+		return fmt.Errorf("Failed to get progFD")
+	}
+
+	log.Infof("Get progFD %d for %s", progFD, progName)
+
+	cMapName := C.CString("cali_jump")
+	defer C.free(unsafe.Pointer(cMapName))
+	mapFD := C.bpf_map__get_map_fd_by_name(obj.obj, cMapName)
+	if mapFD <= 0 {
+		return fmt.Errorf("Failed to get mapFD")
+	}
+	log.Infof("Get mapFD %d", mapFD)
+
+	k := make([]byte, 4)
+	v := make([]byte, 4)
+	binary.LittleEndian.PutUint32(v, uint32(progFD))
+	err = UpdateMapEntry(uint32(mapFD), k, v)
+	if err != nil {
+		log.WithError(err).Errorf("Failed to update jump map %s %s", path, progName)
+		return err
+	}
+
+	// load sample program
+	sample_id := C.run_load_sample_program()
+	sampleID := int(sample_id)
+	log.Infof("Get progFD %d for sample program", sampleID)
+
+	sampleKey := 1
+	binary.LittleEndian.PutUint32(k, uint32(sampleKey))
+	binary.LittleEndian.PutUint32(v, uint32(sampleID))
+	err = UpdateMapEntry(uint32(mapFD), k, v)
+	if err != nil {
+		log.WithError(err).Errorf("Failed to update jump map %s %s", path, progName)
+		return err
+	}
+
+	time.Sleep(300 * time.Second)
+
+	obj.Close()
+	return nil
 }

@@ -107,7 +107,16 @@ void bpf_map__get_info(uint32_t map_fd, struct bpf_map_info *p_map_info) {
     return;
 }
 
-uint32_t bpf_map__get_map_fd_by_id(uint32_t id) {
+int bpf_map__get_map_fd_by_name(struct bpf_object *obj, char* mapName) {
+	int map_fd = bpf_object__find_map_fd_by_name(obj, mapName);
+	if (map_fd < 0) {
+		errno = -map_fd;
+		return map_fd;
+	}
+	return map_fd;
+}
+
+int bpf_map__get_map_fd_by_id(uint32_t id) {
     // Verify that the map still exists.
     int map_fd = bpf_map_get_fd_by_id(id);
     if (map_fd <= 0) {
@@ -133,6 +142,36 @@ int bpf_map__create(enum bpf_map_type map_type, int key_size, int value_size, in
 
     fprintf(stdout, "Created map : {name: %s, type: %d, fd: %d}\n", map_info.name, map_info.type, map_fd);
     return map_fd;
+}
+
+struct bpf_object* bpf_program__xdp_load(char *file_name)
+{
+    struct bpf_object* obj;
+    int program_fd;
+
+    int error = bpf_prog_load_deprecated(file_name, BPF_PROG_TYPE_XDP, &obj, &program_fd);
+    int err = libbpf_get_error(error);
+    if (error != 0) {
+        obj = NULL;
+    }
+
+	set_errno(err);
+	return obj;
+}
+
+int bpf_program__get_fd(struct bpf_object *obj, char *progName) {
+	struct bpf_program *prog_name = bpf_object__find_program_by_name(obj, progName);
+	if (prog_name == NULL) {
+		errno = ENOENT;
+		return -1;
+	}
+	int prog_fd = bpf_program__fd(prog_name);
+	if (prog_fd < 0) {
+		errno = -prog_fd;
+		return prog_fd;
+	}
+
+    return prog_fd;
 }
 
 uint32_t
@@ -262,6 +301,20 @@ enum {
 void *nullptr = NULL;
 
 // The following is just for demo of ebpfwin.exe
+int run_load_sample_program() {
+	// Try with a valid set of instructions.
+    struct ebpf_inst instructions[] = {
+        {0xb7, R0_RETURN_VALUE, 0}, // r0 = 0
+        {INST_OP_EXIT},             // return r0
+    };
+
+    // Load and verify the eBPF program.
+    int program_fd = bpf_load_program(BPF_PROG_TYPE_XDP, instructions, _countof(instructions), nullptr, 0, nullptr, 0);
+    fprintf(stderr, "Song 03: Load program with fd: %d\n", program_fd);
+    return program_fd;
+}
+
+// The following is just for demo of ebpfwin.exe
 int run_load_program() {
 	// Try with a valid set of instructions.
     struct ebpf_inst instructions[] = {
@@ -388,4 +441,85 @@ int xsk_prog_load() {
 	close(prog_fd);
 	close(map_fd);
 	return 0;
+}
+
+int multiple_tail_calls_test()
+{
+    struct bpf_object* object;
+    struct bpf_object* calico_object;
+    int program_fd;
+    int calico_prog_fd;
+    int index;
+
+    const char* file_name ="c:\\k\\tail_call_multiple.o";
+
+    int error = bpf_prog_load_deprecated(file_name, BPF_PROG_TYPE_XDP, &object, &program_fd);
+    if (error != 0) {
+        return -1;
+    }
+
+    const char* calico_file_name ="c:\\k\\xdp.o";
+    error = bpf_prog_load_deprecated(calico_file_name, BPF_PROG_TYPE_XDP, &calico_object, &calico_prog_fd);
+    if (error != 0) {
+        return -1;
+    }
+
+    struct bpf_program* caller = bpf_object__find_program_by_name(object, "caller");
+    if (caller == nullptr) {
+        return -2;
+    }
+
+    struct bpf_program* callee0 = bpf_object__find_program_by_name(object, "callee0");
+    if (callee0 == nullptr) {
+        return -3;
+    }
+
+    struct bpf_program* callee1 = bpf_object__find_program_by_name(object, "callee1");
+    if (callee1 == nullptr) {
+        return -4;
+    }
+
+    struct bpf_map* map = bpf_map__next(nullptr, object);
+    if (map == nullptr) {
+        return -5;
+    }
+
+    int callee0_fd = bpf_program__fd(callee0);
+    if (callee0_fd < 0) {
+        return -6;
+    }
+
+    int callee1_fd = bpf_program__fd(callee1);
+    if (callee1_fd < 0) {
+        return -7;
+    }
+
+    int map_fd = bpf_map__fd(map);
+    if (map_fd < 0) {
+        return -8;
+    }
+
+    // Store callee0 at index 0.
+    index = 0;
+    error = bpf_map_update_elem(map_fd, (uint8_t*)&index, (uint8_t*)&callee0_fd, 0);
+    if (error != 0) {
+        return -9;
+    }
+
+    // Store callee1 at index 9.
+    index = 9;
+    error = bpf_map_update_elem(map_fd, (uint8_t*)&index, (uint8_t*)&callee1_fd, 0);
+    if (error != 0) {
+        return -10;
+    }
+
+    // Store callee1 at index 5.
+    index = 5;
+    error = bpf_map_update_elem(map_fd, (uint8_t*)&index, (uint8_t*)&calico_prog_fd, 0);
+    if (error != 0) {
+        return -10;
+    }
+
+    bpf_object__close(object);
+    return 0;
 }
