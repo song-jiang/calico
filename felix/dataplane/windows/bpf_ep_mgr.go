@@ -282,7 +282,7 @@ func (m *bpfEndpointManager) onWorkloadEnpdointRemove(msg *proto.WorkloadEndpoin
 // onPolicyUpdate stores the policy in the cache and marks any endpoints using it dirty.
 func (m *bpfEndpointManager) onPolicyUpdate(msg *proto.ActivePolicyUpdate) {
 	polID := *msg.Id
-	log.WithField("id", polID).Debugf("Song Policy update %v", msg.Policy)
+	log.WithField("id", polID).Debugf("Policy update %v", msg.Policy)
 	m.policies[polID] = msg.Policy
 	m.markEndpointsDirty(m.policiesToWorkloads[polID], "policy")
 }
@@ -352,7 +352,7 @@ func (m *bpfEndpointManager) markExistingWEPDirty(wlID proto.WorkloadEndpointID,
 }
 
 func (m *bpfEndpointManager) CompleteDeferredWork() error {
-	log.Debug("Song CompleteDeferredWork")
+	log.Debug("bpf_ep_mgr CompleteDeferredWork")
 	// Do one-off initialisation.
 	m.dp.ensureStarted()
 
@@ -522,7 +522,7 @@ func (m *bpfEndpointManager) extractTiers(tier *proto.TierInfo, direction PolDir
 		return
 	}
 
-	log.Debugf("Song extract Tiers %v, %v", tier.IngressPolicies, m.policies)
+	log.Debugf("extract Tiers %v, %v", tier.IngressPolicies, m.policies)
 
 	directionalPols := tier.IngressPolicies
 	if direction == PolDirnEgress {
@@ -944,7 +944,7 @@ func (m *bpfEndpointManager) removePolicyProgram(jumpMapFD bpf.MapFD) error {
 }
 
 func FindJumpMap(progIDStr, ifaceName string) (mapFD bpf.MapFD, err error) {
-	logCtx := log.WithField("progID", progIDStr).WithField("iface", ifaceName)
+	logCtx := log.WithField("cali_jump MapFD", progIDStr).WithField("iface", ifaceName)
 	logCtx.Debugf("Looking up jump map")
 
 	i, _ := strconv.Atoi(progIDStr)

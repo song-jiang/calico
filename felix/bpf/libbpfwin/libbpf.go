@@ -109,6 +109,7 @@ func LoadXDPObject(filename string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("error loading libbpf object %w", err)
 	}
+	log.Infof("XDP object file loaded %s", filename)
 
 	cMapName := C.CString("cali_jump")
 	defer C.free(unsafe.Pointer(cMapName))
