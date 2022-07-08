@@ -23,6 +23,7 @@ import (
 	"net"
 	"reflect"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -945,6 +946,9 @@ func (m *bpfEndpointManager) removePolicyProgram(jumpMapFD bpf.MapFD) error {
 func FindJumpMap(progIDStr, ifaceName string) (mapFD bpf.MapFD, err error) {
 	logCtx := log.WithField("progID", progIDStr).WithField("iface", ifaceName)
 	logCtx.Debugf("Looking up jump map")
+
+	i, _ := strconv.Atoi(progIDStr)
+	return bpf.MapFD(i), nil
 
 	/* Song FIXME
 	bpftool := exec.Command("bpftool", "prog", "show", "id", progIDStr, "--json")

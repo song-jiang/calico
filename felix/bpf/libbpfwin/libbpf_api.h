@@ -174,6 +174,9 @@ int bpf_program__get_fd(struct bpf_object *obj, char *progName) {
     return prog_fd;
 }
 
+// define nullptr
+void *nullptr = NULL;
+
 uint32_t
 bpf_program__load_bytecode(
     enum bpf_prog_type type,
@@ -184,7 +187,9 @@ bpf_program__load_bytecode(
     void* log_buf,
     size_t log_buf_sz)
 {
-    uint32_t program_fd = bpf_load_program(type, (struct ebpf_inst*)insns, insns_cnt, license, kern_version, log_buf, log_buf_sz);
+    // uint32_t program_fd = bpf_load_program(type, (struct ebpf_inst*)insns, insns_cnt, license, kern_version, log_buf, log_buf_sz);
+
+    uint32_t program_fd = bpf_load_program(BPF_PROG_TYPE_XDP, (struct ebpf_inst*)insns, insns_cnt, nullptr, 0, nullptr, 0);
     fprintf(stdout, "Load program with fd: %d\n", program_fd);
     if (program_fd <= 0) {
         set_errno(ENOENT);
@@ -297,8 +302,7 @@ enum {
     R10_STACK_POINTER = 10
 };
 
-// define nullptr
-void *nullptr = NULL;
+
 
 // The following is just for demo of ebpfwin.exe
 int run_load_sample_program() {

@@ -32,6 +32,11 @@ import (
 
 type Obj struct {
 	obj *C.struct_bpf_object
+
+	xdpProgFD int
+	xdpProgID string
+
+	jumpMapFD int
 }
 
 type Map struct {
@@ -96,6 +101,27 @@ func OpenObject(filename string) (*Obj, error) {
 	return &Obj{obj: obj}, nil
 }
 
+var xdpObj *Obj
+
+func LoadXDPObject(filename string) (string, error) {
+	var err error
+	xdpObj, err = LoadObject(filename)
+	if err != nil {
+		return "", fmt.Errorf("error loading libbpf object %w", err)
+	}
+
+	cMapName := C.CString("cali_jump")
+	defer C.free(unsafe.Pointer(cMapName))
+	mapFD := C.bpf_map__get_map_fd_by_name(xdpObj.obj, cMapName)
+	if mapFD <= 0 {
+		return "", fmt.Errorf("Failed to get mapFD")
+	}
+	log.Infof("Got cali_jump mapFD %d", mapFD)
+	xdpObj.jumpMapFD = int(mapFD)
+
+	return fmt.Sprintf("%d", xdpObj.jumpMapFD), nil
+}
+
 func LoadObject(filename string) (*Obj, error) {
 	cFilename := C.CString(filename)
 	defer C.free(unsafe.Pointer(cFilename))
@@ -103,6 +129,7 @@ func LoadObject(filename string) (*Obj, error) {
 	if obj == nil || err != nil {
 		return nil, fmt.Errorf("error loading libbpf object %w", err)
 	}
+
 	return &Obj{obj: obj}, nil
 }
 
@@ -267,6 +294,7 @@ func LoadBPFProgramFromInsns(insns asm.Insns, license string, progType uint32) (
 
 	fd, err := C.bpf_program__load_bytecode(C.enum_bpf_prog_type(progType), cInsnBytes, C.size_t(len(insns)), cLicense, 0, logBuf, C.size_t(logSize))
 
+	log.Infof("load byte code returns %d, err %v", fd, err)
 	if err != nil {
 		goLog := strings.TrimSpace(C.GoString((*C.char)(logBuf)))
 		fmt.Println("BPF_PROG_LOAD failed")
