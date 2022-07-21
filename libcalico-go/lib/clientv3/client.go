@@ -357,6 +357,50 @@ func (c client) ensureClusterInformation(ctx context.Context, calicoVersion, clu
 	return nil
 }
 
+const globalIPAMConfigName = "default"
+
+// ensureIPAMConfig ensures that the default IPAMConfig is created.
+func (c client) ensureIPAMConfig(ctx context.Context) error {
+	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		clusterInfo, err := c.IPAMConfig().Get(ctx, globalClusterInfoName, options.GetOptions{})
+		if err != nil {
+			// Create the default config if it doesn't already exist.
+			if _, ok := err.(cerrors.ErrorResourceDoesNotExist); ok {
+				newClusterInfo := v3.NewClusterInformation()
+				newClusterInfo.Name = globalClusterInfoName
+				newClusterInfo.Spec.CalicoVersion = calicoVersion
+				newClusterInfo.Spec.ClusterType = clusterType
+				u := uuid.New()
+				newClusterInfo.Spec.ClusterGUID = hex.EncodeToString(u[:])
+				datastoreReady := true
+				newClusterInfo.Spec.DatastoreReady = &datastoreReady
+				_, err = c.ClusterInformation().Create(ctx, newClusterInfo, options.SetOptions{})
+				if err != nil {
+					if _, ok := err.(cerrors.ErrorResourceAlreadyExists); ok {
+						log.Info("Failed to create global ClusterInformation; another node got there first.")
+						time.Sleep(1 * time.Second)
+						continue
+					}
+					log.WithError(err).WithField("ClusterInformation", newClusterInfo).Errorf("Error creating cluster information config")
+					return err
+				}
+			} else {
+				log.WithError(err).WithField("ClusterInformation", globalClusterInfoName).Errorf("Error getting cluster information config")
+				return err
+			}
+			break
+		}
+
+		break
+	}
+
+	return nil
+}
+
 // Backend returns the backend client used by the v3 client.  Not exposed on the main
 // client API, but available publicly for consumers that require access to the backend
 // client (e.g. for syncer support).
