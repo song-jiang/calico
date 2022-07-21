@@ -16,8 +16,6 @@ package clientv3
 
 import (
 	"context"
-
-	"github.com/projectcalico/calico/libcalico-go/lib/ipam"
 )
 
 type Interface interface {
@@ -43,8 +41,6 @@ type Interface interface {
 	WorkloadEndpoints() WorkloadEndpointInterface
 	// BGPPeers returns an interface for managing BGP peer resources.
 	BGPPeers() BGPPeerInterface
-	// IPAM returns an interface for managing IP address assignment and releasing.
-	IPAM() ipam.Interface
 	// BGPConfigurations returns an interface for managing the BGP configuration resources.
 	BGPConfigurations() BGPConfigurationInterface
 	// FelixConfigurations returns an interface for managing the Felix configuration resources.
@@ -56,6 +52,8 @@ type Interface interface {
 	KubeControllersConfiguration() KubeControllersConfigurationInterface
 	// CalicoNodeStatus returns an interface for managing CalicoNodeStatus resources.
 	CalicoNodeStatus() CalicoNodeStatusInterface
+	// IPAMConfig returns an interface for managing IPAMConfig resources.
+	IPAMConfig() IPAMConfigInterface
 
 	// EnsureInitialized is used to ensure the backend datastore is correctly
 	// initialized for use by Calico.  This method may be called multiple times, and

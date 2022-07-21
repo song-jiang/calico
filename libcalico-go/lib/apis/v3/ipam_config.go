@@ -23,6 +23,8 @@ import (
 const (
 	KindIPAMConfig     = "IPAMConfig"
 	KindIPAMConfigList = "IPAMConfigList"
+
+	GlobalIPAMConfigName = "default"
 )
 
 // +genclient

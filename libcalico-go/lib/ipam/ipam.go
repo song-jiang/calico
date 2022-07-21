@@ -28,6 +28,9 @@ import (
 	v3 "github.com/projectcalico/api/pkg/apis/projectcalico/v3"
 
 	libapiv3 "github.com/projectcalico/calico/libcalico-go/lib/apis/v3"
+
+	"github.com/projectcalico/calico/libcalico-go/lib/clientv3"
+
 	bapi "github.com/projectcalico/calico/libcalico-go/lib/backend/api"
 	"github.com/projectcalico/calico/libcalico-go/lib/backend/model"
 	cerrors "github.com/projectcalico/calico/libcalico-go/lib/errors"
@@ -67,16 +70,70 @@ type IPReservationInterface interface {
 	List(ctx context.Context, opts options.ListOptions) (*v3.IPReservationList, error)
 }
 
-// NewIPAMClient returns a new ipamClient, which implements Interface.
+type poolAccessor struct {
+	client clientv3.Interface
+}
+
+func (p poolAccessor) GetEnabledPools(ipVersion int) ([]v3.IPPool, error) {
+	return p.getPools(func(pool *v3.IPPool) bool {
+		if pool.Spec.Disabled {
+			log.Debugf("Skipping disabled IP pool (%s)", pool.Name)
+			return false
+		}
+		if _, cidr, err := net.ParseCIDR(pool.Spec.CIDR); err == nil && cidr.Version() == ipVersion {
+			log.Debugf("Adding pool (%s) to the IPPool list", cidr.String())
+			return true
+		} else if err != nil {
+			log.Warnf("Failed to parse the IPPool: %s. Ignoring that IPPool", pool.Spec.CIDR)
+		} else {
+			log.Debugf("Ignoring IPPool: %s. IP version is different.", pool.Spec.CIDR)
+		}
+		return false
+	})
+}
+
+func (p poolAccessor) getPools(filter func(pool *v3.IPPool) bool) ([]v3.IPPool, error) {
+	pools, err := p.client.IPPools().List(context.Background(), options.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	log.Debugf("Got list of all IPPools: %v", pools)
+	var filtered []v3.IPPool
+	for _, pool := range pools.Items {
+		if filter(&pool) {
+			filtered = append(filtered, pool)
+		}
+	}
+	return filtered, nil
+}
+
+func (p poolAccessor) GetAllPools() ([]v3.IPPool, error) {
+	return p.getPools(func(pool *v3.IPPool) bool {
+		return true
+	})
+}
+
+type accessor interface {
+	Backend() bapi.Client
+}
+
+// IPAM returns an interface for managing IP address assignment and releasing.
+func IPAM(c clientv3.Client) Interface {
+	return NewIPAMClientShim(c, poolAccessor{client: c}, c.IPReservations())
+}
+
+// NewIPAMClientShim returns a new ipamClient, which implements Interface.
 // Consumers of the Calico API should not create this directly, but should
-// access IPAM through the main client IPAM accessor (e.g. clientv3.IPAM())
-func NewIPAMClient(client bapi.Client, pools PoolAccessorInterface, reservations IPReservationInterface) Interface {
+// access IPAM through the main client IPAM accessor (e.g. IPAM())
+func NewIPAMClientShim(c clientv3.Interface, pools PoolAccessorInterface, reservations IPReservationInterface) Interface {
+	bapiC := c.(accessor).Backend()
 	return &ipamClient{
-		client:       client,
+		bapiC:        bapiC,
+		client:       c,
 		pools:        pools,
 		reservations: reservations,
 		blockReaderWriter: blockReaderWriter{
-			client: client,
+			client: bapiC,
 			pools:  pools,
 		},
 	}
@@ -84,7 +141,15 @@ func NewIPAMClient(client bapi.Client, pools PoolAccessorInterface, reservations
 
 // ipamClient implements Interface
 type ipamClient struct {
-	client            bapi.Client
+	// bapiC is libcalico-go backend client to access datastore.
+	// This is currently used to access some non-public APIs.
+	// Note we should get it replaced that all reources should be accessed by
+	// libcalico clientv3 API.
+	bapiC bapi.Client
+
+	// client is libcalico-go v3 client to access datastore.
+	client clientv3.Interface
+
 	pools             PoolAccessorInterface
 	blockReaderWriter blockReaderWriter
 	reservations      IPReservationInterface
@@ -328,7 +393,7 @@ func (c ipamClient) determinePools(ctx context.Context, requestedPoolNets []net.
 // selects this node. It returns matching pools, list of host-affine blocks and any error encountered.
 func (c ipamClient) prepareAffinityBlocksForHost(ctx context.Context, requestedPools []net.IPNet, version int, host string, rsvdAttr *HostReservedAttr, use v3.IPPoolAllowedUse) ([]v3.IPPool, []net.IPNet, error) {
 	// Retrieve node for given hostname to use for ip pool node selection
-	node, err := c.client.Get(ctx, model.ResourceKey{Kind: libapiv3.KindNode, Name: host}, "")
+	node, err := c.bapiC.Get(ctx, model.ResourceKey{Kind: libapiv3.KindNode, Name: host}, "")
 	if err != nil {
 		log.WithError(err).WithField("node", host).Error("failed to get node for host")
 		return nil, nil, err
@@ -1484,7 +1549,7 @@ func (c ipamClient) RemoveIPAMHost(ctx context.Context, host string) error {
 		// Get the IPAM host.
 		logCtx.Debug("Querying IPAM host tree in data store")
 		k := model.IPAMHostKey{Host: hostname}
-		kvp, err := c.client.Get(ctx, k, "")
+		kvp, err := c.bapiC.Get(ctx, k, "")
 		if err != nil {
 			if _, ok := err.(cerrors.ErrorOperationNotSupported); ok {
 				// KDD mode doesn't have this object - this is a no-op.
@@ -1503,7 +1568,7 @@ func (c ipamClient) RemoveIPAMHost(ctx context.Context, host string) error {
 
 		// Remove the host tree from the datastore.
 		logCtx.Debug("Deleting IPAM host tree from data store")
-		_, err = c.client.Delete(ctx, k, kvp.Revision)
+		_, err = c.bapiC.Delete(ctx, k, kvp.Revision)
 		if err != nil {
 			if _, ok := err.(cerrors.ErrorResourceUpdateConflict); ok {
 				// We hit a compare-and-delete error - retry.
@@ -1527,7 +1592,7 @@ func (c ipamClient) hostBlockPairs(ctx context.Context, pool net.IPNet) (map[str
 	pairs := map[string]string{}
 
 	// Get all blocks and their affinities.
-	objs, err := c.client.List(ctx, model.BlockAffinityListOptions{}, "")
+	objs, err := c.bapiC.List(ctx, model.BlockAffinityListOptions{}, "")
 	if err != nil {
 		log.Errorf("Error querying block affinities: %v", err)
 		return nil, err
@@ -1710,7 +1775,7 @@ func (c ipamClient) incrementHandle(ctx context.Context, handleID string, blockC
 			}
 		} else {
 			// This is a new handle - create it.
-			_, err = c.client.Create(ctx, obj)
+			_, err = c.bapiC.Create(ctx, obj)
 			if err != nil {
 				log.WithError(err).Warning("Failed to create handle, retry")
 				continue
@@ -1805,7 +1870,7 @@ func (c ipamClient) GetAssignmentAttributes(ctx context.Context, addr net.IP) (m
 // has been set, returns a default configuration with StrictAffinity disabled
 // and AutoAllocateBlocks enabled.
 func (c ipamClient) GetIPAMConfig(ctx context.Context) (config *IPAMConfig, err error) {
-	obj, err := c.client.Get(ctx, model.IPAMConfigKey{}, "")
+	obj, err := c.bapiC.Get(ctx, model.IPAMConfigKey{}, "")
 	if err != nil {
 		if _, ok := err.(cerrors.ErrorResourceDoesNotExist); ok {
 			// IPAMConfig has not been explicitly set.  Return
@@ -1861,7 +1926,7 @@ func (c ipamClient) SetIPAMConfig(ctx context.Context, cfg IPAMConfig) error {
 	}
 
 	// Get revision if resource already exists
-	old, err := c.client.Get(ctx, model.IPAMConfigKey{}, "")
+	old, err := c.bapiC.Get(ctx, model.IPAMConfigKey{}, "")
 	if err != nil {
 		if _, ok := err.(cerrors.ErrorResourceDoesNotExist); !ok {
 			log.Errorf("Error querying IPAMConfig %v", err)
@@ -1877,7 +1942,7 @@ func (c ipamClient) SetIPAMConfig(ctx context.Context, cfg IPAMConfig) error {
 	if old != nil {
 		obj.Revision = old.Revision
 	}
-	_, err = c.client.Apply(ctx, &obj)
+	_, err = c.bapiC.Apply(ctx, &obj)
 	if err != nil {
 		log.Errorf("Error applying IPAMConfig: %v", err)
 		return err
@@ -1923,7 +1988,7 @@ func (c ipamClient) ensureConsistentAffinity(ctx context.Context, b *model.Alloc
 	// we should release the block's affinity to this node so it can be
 	// used elsewhere.
 	logCtx.Debugf("Looking up node labels for host affinity")
-	node, err := c.client.Get(ctx, model.ResourceKey{Kind: libapiv3.KindNode, Name: host}, "")
+	node, err := c.bapiC.Get(ctx, model.ResourceKey{Kind: libapiv3.KindNode, Name: host}, "")
 	if err != nil {
 		if _, ok := err.(cerrors.ErrorResourceDoesNotExist); !ok {
 			logCtx.WithError(err).WithField("node", host).Error("Failed to get node for host")
@@ -2027,7 +2092,7 @@ func (c ipamClient) GetUtilization(ctx context.Context, args GetUtilizationArgs)
 	}
 
 	// Read all allocation blocks.
-	blocks, err := c.client.List(ctx, model.BlockListOptions{}, "")
+	blocks, err := c.bapiC.List(ctx, model.BlockListOptions{}, "")
 	if err != nil {
 		return nil, err
 	}

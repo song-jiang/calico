@@ -29,12 +29,12 @@ import (
 
 	v3 "github.com/projectcalico/api/pkg/apis/projectcalico/v3"
 
+	libapiv3 "github.com/projectcalico/calico/libcalico-go/lib/apis/v3"
+
 	"github.com/projectcalico/calico/libcalico-go/lib/apiconfig"
 	"github.com/projectcalico/calico/libcalico-go/lib/backend"
 	bapi "github.com/projectcalico/calico/libcalico-go/lib/backend/api"
 	cerrors "github.com/projectcalico/calico/libcalico-go/lib/errors"
-	"github.com/projectcalico/calico/libcalico-go/lib/ipam"
-	"github.com/projectcalico/calico/libcalico-go/lib/net"
 	"github.com/projectcalico/calico/libcalico-go/lib/options"
 	"github.com/projectcalico/calico/libcalico-go/lib/set"
 )
@@ -137,11 +137,6 @@ func (c client) BGPPeers() BGPPeerInterface {
 	return bgpPeers{client: c}
 }
 
-// IPAM returns an interface for managing IP address assignment and releasing.
-func (c client) IPAM() ipam.Interface {
-	return ipam.NewIPAMClient(c.backend, poolAccessor{client: &c}, c.IPReservations())
-}
-
 // BGPConfigurations returns an interface for managing the BGP configuration resources.
 func (c client) BGPConfigurations() BGPConfigurationInterface {
 	return bgpConfigurations{client: c}
@@ -168,47 +163,9 @@ func (c client) CalicoNodeStatus() CalicoNodeStatusInterface {
 	return calicoNodeStatus{client: c}
 }
 
-type poolAccessor struct {
-	client *client
-}
-
-func (p poolAccessor) GetEnabledPools(ipVersion int) ([]v3.IPPool, error) {
-	return p.getPools(func(pool *v3.IPPool) bool {
-		if pool.Spec.Disabled {
-			log.Debugf("Skipping disabled IP pool (%s)", pool.Name)
-			return false
-		}
-		if _, cidr, err := net.ParseCIDR(pool.Spec.CIDR); err == nil && cidr.Version() == ipVersion {
-			log.Debugf("Adding pool (%s) to the IPPool list", cidr.String())
-			return true
-		} else if err != nil {
-			log.Warnf("Failed to parse the IPPool: %s. Ignoring that IPPool", pool.Spec.CIDR)
-		} else {
-			log.Debugf("Ignoring IPPool: %s. IP version is different.", pool.Spec.CIDR)
-		}
-		return false
-	})
-}
-
-func (p poolAccessor) getPools(filter func(pool *v3.IPPool) bool) ([]v3.IPPool, error) {
-	pools, err := p.client.IPPools().List(context.Background(), options.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	log.Debugf("Got list of all IPPools: %v", pools)
-	var filtered []v3.IPPool
-	for _, pool := range pools.Items {
-		if filter(&pool) {
-			filtered = append(filtered, pool)
-		}
-	}
-	return filtered, nil
-}
-
-func (p poolAccessor) GetAllPools() ([]v3.IPPool, error) {
-	return p.getPools(func(pool *v3.IPPool) bool {
-		return true
-	})
+// IPAMConfig returns an interface for managing the IPAMConfig resource.
+func (c client) IPAMConfig() IPAMConfigInterface {
+	return IPAMConfigs{client: c}
 }
 
 // EnsureInitialized is used to ensure the backend datastore is correctly
@@ -357,40 +314,38 @@ func (c client) ensureClusterInformation(ctx context.Context, calicoVersion, clu
 	return nil
 }
 
-const globalIPAMConfigName = "default"
-
-// ensureIPAMConfig ensures that the default IPAMConfig is created.
-func (c client) ensureIPAMConfig(ctx context.Context) error {
+// GetAndEnsureIPAMConfig ensures that the default IPAMConfig is created and return the IPAM config.
+func (c client) GetAndEnsureIPAMConfig(ctx context.Context) (*libapiv3.IPAMConfig, error) {
+	var ipamConfig *libapiv3.IPAMConfig
+	var err error
 	for {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return nil, ctx.Err()
 		}
 
-		clusterInfo, err := c.IPAMConfig().Get(ctx, globalClusterInfoName, options.GetOptions{})
+		ipamConfig, err = c.IPAMConfig().Get(ctx, libapiv3.GlobalIPAMConfigName, options.GetOptions{})
 		if err != nil {
 			// Create the default config if it doesn't already exist.
 			if _, ok := err.(cerrors.ErrorResourceDoesNotExist); ok {
-				newClusterInfo := v3.NewClusterInformation()
-				newClusterInfo.Name = globalClusterInfoName
-				newClusterInfo.Spec.CalicoVersion = calicoVersion
-				newClusterInfo.Spec.ClusterType = clusterType
-				u := uuid.New()
-				newClusterInfo.Spec.ClusterGUID = hex.EncodeToString(u[:])
-				datastoreReady := true
-				newClusterInfo.Spec.DatastoreReady = &datastoreReady
-				_, err = c.ClusterInformation().Create(ctx, newClusterInfo, options.SetOptions{})
+				newIPAMConfig := libapiv3.NewIPAMConfig()
+				newIPAMConfig.Name = libapiv3.GlobalIPAMConfigName
+				newIPAMConfig.Spec.StrictAffinity = false
+				newIPAMConfig.Spec.MaxBlocksPerHost = 0
+				newIPAMConfig.Spec.AutoAllocateBlocks = true
+
+				_, err = c.IPAMConfig().Create(ctx, newIPAMConfig, options.SetOptions{})
 				if err != nil {
 					if _, ok := err.(cerrors.ErrorResourceAlreadyExists); ok {
-						log.Info("Failed to create global ClusterInformation; another node got there first.")
+						log.Info("Failed to create global IPAM config; another node got there first.")
 						time.Sleep(1 * time.Second)
 						continue
 					}
-					log.WithError(err).WithField("ClusterInformation", newClusterInfo).Errorf("Error creating cluster information config")
-					return err
+					log.WithError(err).WithField("IPAMConfig", newIPAMConfig).Errorf("Error creating IPAM config")
+					return nil, err
 				}
 			} else {
-				log.WithError(err).WithField("ClusterInformation", globalClusterInfoName).Errorf("Error getting cluster information config")
-				return err
+				log.WithError(err).WithField("IPAMConfig", libapiv3.GlobalIPAMConfigName).Errorf("Error getting IPAM config")
+				return nil, err
 			}
 			break
 		}
@@ -398,7 +353,7 @@ func (c client) ensureIPAMConfig(ctx context.Context) error {
 		break
 	}
 
-	return nil
+	return ipamConfig, nil
 }
 
 // Backend returns the backend client used by the v3 client.  Not exposed on the main
