@@ -18,6 +18,7 @@ import (
 	"math"
 	"reflect"
 	"regexp"
+	"sync"
 	"time"
 
 	"github.com/projectcalico/calico/felix/bpf/bpfmap"
@@ -116,7 +117,7 @@ type WindowsDataplane struct {
 	endpointMgr *endpointManager
 	// each IPSets manages a whole "plane" of IP sets, i.e. all the IPv4 sets, or all the IPv6
 	// IP sets.
-	ipSets []*ipsets.IPSets
+	ipSets []common.IPSetsDataplane
 	// PolicySets manages all of the policies and profiles which have been communicated to the
 	// dataplane driver
 	policySets *policysets.PolicySets
@@ -196,11 +197,7 @@ func NewWinDataplaneDriver(hns hns.API, config Config) *WindowsDataplane {
 
 	dp.ipSets = append(dp.ipSets, ipSetsV4)
 
-	var ipsc []policysets.IPSetCache
-	for _, i := range dp.ipSets {
-		ipsc = append(ipsc, i)
-	}
-	dp.policySets = policysets.NewPolicySets(hns, ipsc, policysets.FileReader(policysets.StaticFileName))
+	dp.policySets = policysets.NewPolicySets(hns, []policysets.IPSetCache{ipSetsV4}, policysets.FileReader(policysets.StaticFileName))
 
 	ipsetsManager := common.NewIPSetsManager(ipSetsV4, config.MaxIPSetSize)
 	dp.RegisterManager(ipsetsManager)
@@ -244,7 +241,8 @@ func NewWinDataplaneDriver(hns hns.API, config Config) *WindowsDataplane {
 			bpfMapContext.IpsetsMap,
 			dp.loopSummarizer,
 		)
-		// dp.ipSets = append(dp.ipSets, ipSetsV4BPF) // TODO: Not sure if it is useful
+
+		dp.ipSets = append(dp.ipSets, ipSetsV4BPF)
 		ipsetsManager.AddDataplane(ipSetsV4BPF)
 
 		bpfEndpointManager = newBPFEndpointManager(
@@ -452,6 +450,20 @@ func (d *WindowsDataplane) apply() {
 
 		d.reschedC = d.reschedTimer.C
 	}
+
+	// Next, create/update IP sets.
+	var ipSetsWG sync.WaitGroup
+	for _, ipSets := range d.ipSets {
+		ipSetsWG.Add(1)
+		go func(ipSets common.IPSetsDataplane) {
+			ipSets.ApplyUpdates()
+			d.reportHealth()
+			ipSetsWG.Done()
+		}(ipSets)
+	}
+
+	// Wait for the IP sets update to finish.
+	ipSetsWG.Wait()
 }
 
 // Invoked periodically to report health (liveness/readiness)
