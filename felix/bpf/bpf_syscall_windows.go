@@ -60,18 +60,30 @@ func RunBPFProgram(fd ProgFD, dataIn []byte, repeat int) (ProgResult, error) {
 }
 
 func UpdateMapEntry(mapFD MapFD, k, v []byte) error {
-	log.Debugf("UpdateMapEntry(%v, %v, %v)", mapFD, k, v)
+	log.Debugf("UpdateMapEntry(%v, %x, %x)", mapFD, k, v)
 
 	err := checkMapIfDebug(mapFD, len(k), len(v))
 	if err != nil {
 		return err
 	}
 
-	return libbpfwin.UpdateMapEntry(uint32(mapFD), k, v)
+	err = libbpfwin.UpdateMapEntry(uint32(mapFD), k, v)
+	if err != nil {
+		log.Errorf("UpdateMapEntry failed to update with err %v", err)
+		return err
+	}
+
+	readback, err := GetMapEntry(mapFD, k, len(v))
+	if err != nil {
+		log.Errorf("UpdateMapEntry failed to get with err %v", err)
+		return err
+	}
+	log.Debugf("UpdateMapEntry getting value %x", readback)
+	return nil
 }
 
 func GetMapEntry(mapFD MapFD, k []byte, valueSize int) ([]byte, error) {
-	log.Debugf("GetMapEntry(%v, %v, %v)", mapFD, k, valueSize)
+	log.Debugf("GetMapEntry(%v, %x, %x)", mapFD, k, valueSize)
 
 	return libbpfwin.GetMapEntry(uint32(mapFD), k, valueSize)
 }
