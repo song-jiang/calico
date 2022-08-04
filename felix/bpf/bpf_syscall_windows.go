@@ -78,12 +78,12 @@ func UpdateMapEntry(mapFD MapFD, k, v []byte) error {
 		log.Errorf("UpdateMapEntry failed to get with err %v", err)
 		return err
 	}
-	log.Debugf("UpdateMapEntry getting value %x", readback)
+	log.Debugf("UpdateMapEntry got value %x", readback)
 	return nil
 }
 
 func GetMapEntry(mapFD MapFD, k []byte, valueSize int) ([]byte, error) {
-	log.Debugf("GetMapEntry(%v, %x, %x)", mapFD, k, valueSize)
+	log.Debugf("GetMapEntry(fd %v, key %x)", mapFD, k, valueSize)
 
 	return libbpfwin.GetMapEntry(uint32(mapFD), k, valueSize)
 }
