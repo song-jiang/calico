@@ -120,6 +120,16 @@ func LoadXDPObject(filename string) (string, error) {
 	log.Infof("Got cali_jump mapFD %d", mapFD)
 	xdpObj.jumpMapFD = int(mapFD)
 
+	log.Info("Start to attach the program")
+	cProgName := C.CString("xdp_cali_entry")
+	defer C.free(unsafe.Pointer(cProgName))
+	result := C.bpf_program__xdp_attach(xdpObj.obj, cProgName, 4)
+	if result < 0 {
+		log.Errorf("attach program failed %d", result)
+		return "", fmt.Errorf("Failed to attach program")
+	}
+	log.Info("Attach program done")
+
 	return fmt.Sprintf("%d", xdpObj.jumpMapFD), nil
 }
 

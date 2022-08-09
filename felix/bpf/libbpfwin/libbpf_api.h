@@ -174,6 +174,24 @@ int bpf_program__get_fd(struct bpf_object *obj, char *progName) {
     return prog_fd;
 }
 
+uint32_t
+bpf_program__xdp_attach(struct bpf_object *obj, char* progName, int ifindex)   
+{
+    struct bpf_program* calico_xdp = bpf_object__find_program_by_name(obj, progName);
+    if (calico_xdp == NULL) {
+        set_errno(ENOENT);
+		return -1;
+    }
+
+    struct bpf_link* link = bpf_program__attach_xdp(calico_xdp, ifindex);
+    if (link == NULL) {
+        set_errno(ENOENT);
+		return -2;
+    }
+
+    return 0;
+}
+
 // define nullptr
 void *nullptr = NULL;
 

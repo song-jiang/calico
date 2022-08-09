@@ -477,6 +477,11 @@ func (m *bpfEndpointManager) attachXDPProgram(ifaceName string, ep *proto.HostEn
 		Modes:    m.xdpModes,
 	}
 
+	if ep == nil {
+		ap.Log().Debugf("Building program for untracked policy ep=%v", ep)
+		return nil
+	}
+
 	ap.Log().Debugf("Building program for untracked policy hep=%v, untrack=%v", ep.Name, ep.UntrackedTiers)
 
 	if ep != nil && len(ep.UntrackedTiers) == 1 {
@@ -494,6 +499,7 @@ func (m *bpfEndpointManager) attachXDPProgram(ifaceName string, ep *proto.HostEn
 		ap.Log().Debugf("Rules: %v", rules)
 		return m.dp.updatePolicyProgram(jumpMapFD, rules)
 	} else {
+		ap.Log().Debugf("Make sure no program for untracked policy hep=%v, untrack=%v", ep.Name, ep.UntrackedTiers)
 		return m.dp.ensureNoProgram(&ap)
 	}
 }
