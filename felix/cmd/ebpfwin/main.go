@@ -27,9 +27,17 @@ func main() {
 	// result := ebpfwin.RunAnotherProgram()
 	// fmt.Printf("From main.go: ebpfwin test RunAnotherProgram return code: %d\n", result)
 
-	err := ebpfwin.ObjectTest("c:\\k\\xdp.o", "calico_xdp_norm_pol_tail")
+	/*
+		err := ebpfwin.ObjectTest("c:\\k\\xdp.o", "calico_xdp_norm_pol_tail")
+		if err != nil {
+			fmt.Printf("From main.go test obj %v", err)
+			return
+		}
+	*/
+
+	_, err := ebpfwin.LoadXDPObject("c:\\k\\xdp.o")
 	if err != nil {
-		fmt.Printf("From main.go test obj %v", err)
+		fmt.Printf("From main.go load xdp object %v", err)
 		return
 	}
 }

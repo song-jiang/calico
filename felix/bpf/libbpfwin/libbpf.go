@@ -44,6 +44,11 @@ type Map struct {
 	bpfObj *C.struct_bpf_object
 }
 
+type Program struct {
+	bpfProgram *C.struct_bpf_program
+	bpfObj     *C.struct_bpf_object
+}
+
 const MapTypeProgrArray = C.BPF_MAP_TYPE_PROG_ARRAY
 
 type QdiskHook string
@@ -121,14 +126,24 @@ func LoadXDPObject(filename string) (string, error) {
 	xdpObj.jumpMapFD = int(mapFD)
 
 	log.Info("Start to attach the program")
-	cProgName := C.CString("xdp_cali_entry")
+	cProgName := C.CString("xdp_calico_entry")
 	defer C.free(unsafe.Pointer(cProgName))
+	progFD := C.bpf_program__get_fd(xdpObj.obj, cProgName)
+
+	if progFD <= 0 {
+		return "", fmt.Errorf("Failed to get progFD")
+	}
+
+	log.Infof("Get progFD %d for xdp_calico_entry", progFD)
+
 	result := C.bpf_program__xdp_attach(xdpObj.obj, cProgName, 4)
 	if result < 0 {
 		log.Errorf("attach program failed %d", result)
 		return "", fmt.Errorf("Failed to attach program")
 	}
 	log.Info("Attach program done")
+
+	time.Sleep(3 * time.Second)
 
 	return fmt.Sprintf("%d", xdpObj.jumpMapFD), nil
 }
@@ -173,6 +188,37 @@ func (m *Map) NextMap() (*Map, error) {
 		return nil, nil
 	}
 	return &Map{bpfMap: bpfMap, bpfObj: m.bpfObj}, nil
+}
+
+// FirstProgram returns first bpf program of the object.
+// Returns error if the program is nil.
+func (o *Obj) FirstProgram() (*Program, error) {
+	bpfProgram, err := C.bpf_program__next(nil, o.obj)
+	if bpfProgram == nil || err != nil {
+		return nil, fmt.Errorf("error getting first map %w", err)
+	}
+	return &Program{bpfProgram: bpfProgram, bpfObj: o.obj}, nil
+}
+
+func (p *Program) Name() string {
+	name := C.bpf_program__name(p.bpfProgram)
+	if name == nil {
+		return ""
+	}
+	return C.GoString(name)
+}
+
+// NextProgram returns the successive maps given the first map.
+// Returns nil, no error at the end of the list.
+func (p *Program) NextProgram() (*Program, error) {
+	bpfProgram, err := C.bpf_program__next(p.bpfProgram, p.bpfObj)
+	if err != nil {
+		return nil, fmt.Errorf("error getting next map %w", err)
+	}
+	if bpfProgram == nil {
+		return nil, nil
+	}
+	return &Program{bpfProgram: bpfProgram, bpfObj: p.bpfObj}, nil
 }
 
 type Link struct {
@@ -391,11 +437,35 @@ func ObjectTest(path string, progName string) error {
 		}
 
 		if m == nil {
-			log.Info("No more map available")
+			log.Info("No more map available\n\n")
 			break
 		}
 
 		log.Infof("Next map is %s", m.Name())
+	}
+
+	p0, err := obj.FirstProgram()
+	if err != nil {
+		log.WithError(err).Errorf("Failed to get first program %s", path)
+		return err
+	}
+
+	log.Infof("First program is %s", p0.Name())
+
+	p := p0
+	for {
+		p, err = p.NextProgram()
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get first program %s", path)
+			return err
+		}
+
+		if p == nil {
+			log.Info("No more program available\n\n")
+			break
+		}
+
+		log.Infof("Next program is %s", p.Name())
 	}
 
 	cProgName := C.CString(progName)
@@ -439,7 +509,7 @@ func ObjectTest(path string, progName string) error {
 		return err
 	}
 
-	time.Sleep(300 * time.Second)
+	time.Sleep(3 * time.Second)
 
 	obj.Close()
 	return nil
