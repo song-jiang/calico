@@ -232,7 +232,7 @@ bpf_program__load_bytecode(
 void bpf_map__lookup_elem(uint32_t fd, const void *key, const void *value) {
     int error = bpf_map_lookup_elem(fd, key, value);
     if (error != 0) {
-        fprintf(stderr, "Failed to get entry map: %d\n", errno);
+        fprintf(stderr, "Failed to get entry map: %d\n", error);
         set_errno(error);
     }
     return;
@@ -545,5 +545,149 @@ int multiple_tail_calls_test()
     }
 
     bpf_object__close(object);
+    return 0;
+}
+
+typedef int16_t __s16;
+typedef int32_t __s32;
+
+typedef uint8_t __u8;
+typedef uint16_t __u16;
+typedef uint32_t __u32;
+typedef uint64_t __u64;
+
+#define __bitwise__
+#define __bitwise __bitwise__
+
+typedef __u16 __bitwise __le16;
+typedef __u16 __bitwise __be16;
+typedef __u32 __bitwise __le32;
+typedef __u32 __bitwise __be32;
+typedef __u64 __bitwise __le64;
+typedef __u64 __bitwise __be64;
+
+typedef __u16 __sum16;
+
+struct calico_ct_result
+{
+    __s16 rc;
+    __u16 flags;
+    __be32 nat_ip;
+    __u16 nat_port;
+    __u16 nat_sport;
+    __be32 tun_ip;
+    __u32 ifindex_fwd;     /* if set, the ifindex where the packet should be forwarded */
+    __u32 ifindex_created; /* For a CT state that was created by a packet ingressing
+                            * through an interface towards the host, this is the
+                            * ingress interface index.  For a CT state created by a
+                            * packet _from_ the host, it's CT_INVALID_IFINDEX (0).
+                            */
+};
+
+struct calico_nat_dest
+{
+    __u32 addr;
+    __u16 port;
+    __u8 pad[2];
+};
+
+// struct cali_tc_state holds state that is passed between the BPF programs.
+// WARNING: must be kept in sync with
+// - the definitions in bpf/polprog/pol_prog_builder.go.
+// - the Go version of the struct in bpf/state/map.go
+struct cali_tc_state
+{
+    /* Initial IP read from the packet, updated to host's IP when doing NAT encap/ICMP error.
+     * updated when doing CALI_CT_ESTABLISHED_SNAT handling. Used for FIB lookup. */
+    __be32 ip_src;
+    /* Initial IP read from packet. Updated when doing encap and ICMP errors or CALI_CT_ESTABLISHED_DNAT.
+     * If connect-time load balancing is enabled, this will be the post-NAT IP because the connect-time
+     * load balancer gets in before TC. */
+    __be32 ip_dst;
+    /* Set when invoking the policy program; if no NAT, ip_dst; otherwise, the pre-DNAT IP.  If the connect
+     * time load balancer is enabled, this may be different from ip_dst. */
+    __be32 pre_nat_ip_dst;
+    /* If no NAT, ip_dst.  Otherwise the NAT dest that we look up from the NAT maps or the conntrack entry
+     * for CALI_CT_ESTABLISHED_DNAT. */
+    __be32 post_nat_ip_dst;
+    /* For packets that arrived over our VXLAN tunnel, the source IP of the tunnel packet.
+     * Zeroed out when we decide to respond with an ICMP error.
+     * Also used to stash the ICMP MTU when calling the ICMP response program. */
+    __be32 tun_ip;
+    /* Return code from the policy program CALI_POL_DENY/ALLOW etc. */
+    __s32 pol_rc;
+    /* Source port of the packet; updated on the CALI_CT_ESTABLISHED_SNAT path or when doing encap.
+     * zeroed out on the ICMP response path. */
+    __u16 sport;
+    union
+    {
+        /* dport is the destination port of the packet; it may be pre or post NAT */
+        __u16 dport;
+        struct icmp
+        {
+            __u8 icmp_type;
+            __u8 icmp_code;
+        };
+    };
+    /* Pre-NAT dest port; set similarly to pre_nat_ip_dst. */
+    __u16 pre_nat_dport;
+    /* Post-NAT dest port; set similarly to post_nat_ip_dst. */
+    __u16 post_nat_dport;
+    /* Packet IP proto; updated to UDP when we encap. */
+    __u8 ip_proto;
+    /* Flags from enum cali_state_flags. */
+    __u8 flags;
+    /* Packet size filled from iphdr->tot_len in tc_state_fill_from_iphdr(). */
+    __be16 ip_size;
+
+    /* Result of the conntrack lookup. */
+    struct calico_ct_result ct_result;
+
+    /* Result of the NAT calculation.  Zeroed if there is no DNAT. */
+    struct calico_nat_dest nat_dest;
+    __u64 prog_start_time;
+};
+
+void
+get_addr(char *addr, __be32 ip)
+{
+    unsigned char bytes[4];
+    bytes[0] = ip & 0xFF;
+    bytes[1] = (ip >> 8) & 0xFF;
+    bytes[2] = (ip >> 16) & 0xFF;
+    bytes[3] = (ip >> 24) & 0xFF;
+    (void)sprintf_s(addr, 20, "%d.%d.%d.%d", bytes[0], bytes[1], bytes[2], bytes[3]);
+}
+
+int
+show_stats(int map_fd)
+{
+    int result;
+    __be32 pid;
+    struct cali_tc_state state_entry;
+    char src_addr[20], dest_addr[20], action[20], key[20];
+
+    printf("Flags\t  SrcIP\t\t  DestIP\tProto\tkey\n");
+    result = bpf_map_get_next_key(map_fd, nullptr, &pid);
+    while (result == EBPF_SUCCESS) {
+        memset(&state_entry, 0, sizeof(state_entry));
+        result = bpf_map_lookup_elem(map_fd, &pid, &state_entry);
+        if (result != EBPF_SUCCESS) {
+            fprintf(stderr, "Failed to look up eBPF map entry: %d\n", result);
+            return 1;
+        }
+        get_addr(src_addr, state_entry.ip_src);
+        get_addr(dest_addr, state_entry.ip_dst);
+        get_addr(key, pid);
+
+        if (state_entry.flags == 8) {
+            (void)sprintf_s(action, 20, "%s", "allow"); 
+        }
+        if (state_entry.flags == 9) {
+            (void)sprintf_s(action, 20, "%s", "deny");
+        }
+        printf("%d\t%s\t%s\t%d\t[%s]\t\t%s\n", state_entry.flags, src_addr, dest_addr, state_entry.ip_proto, key, action);
+        result = bpf_map_get_next_key(map_fd, &pid, &pid);
+    };
     return 0;
 }

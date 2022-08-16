@@ -67,6 +67,13 @@ func (m *Map) Name() string {
 	return C.GoString(name)
 }
 
+func (m *Map) Fd() int {
+	cMapName := C.CString(m.Name())
+	defer C.free(unsafe.Pointer(cMapName))
+	mapFD := C.bpf_map__get_map_fd_by_name(m.bpfObj, cMapName)
+	return int(mapFD)
+}
+
 func (m *Map) Type() int {
 	mapType := C.bpf_map__type(m.bpfMap)
 	return int(mapType)
@@ -116,6 +123,11 @@ func LoadXDPObject(filename string) (string, error) {
 	}
 	log.Infof("XDP object file loaded %s", filename)
 
+	err = ShowObjectDetails(xdpObj)
+	if err != nil {
+		return "", fmt.Errorf("error showing libbpf object %w", err)
+	}
+
 	cMapName := C.CString("cali_jump")
 	defer C.free(unsafe.Pointer(cMapName))
 	mapFD := C.bpf_map__get_map_fd_by_name(xdpObj.obj, cMapName)
@@ -124,6 +136,13 @@ func LoadXDPObject(filename string) (string, error) {
 	}
 	log.Infof("Got cali_jump mapFD %d", mapFD)
 	xdpObj.jumpMapFD = int(mapFD)
+
+	cMapName = C.CString("trace_map")
+	mapFD = C.bpf_map__get_map_fd_by_name(xdpObj.obj, cMapName)
+	if mapFD <= 0 {
+		return "", fmt.Errorf("Failed to get mapFD")
+	}
+	log.Infof("Got trace_map mapFD %d", mapFD)
 
 	log.Info("Start to attach the program")
 	cProgName := C.CString("xdp_calico_entry")
@@ -143,7 +162,12 @@ func LoadXDPObject(filename string) (string, error) {
 	}
 	log.Info("Attach program done")
 
-	time.Sleep(3 * time.Second)
+	/*
+		for {
+			C.show_stats(C.int(mapFD))
+			time.Sleep(10 * time.Second)
+		}
+	*/
 
 	return fmt.Sprintf("%d", xdpObj.jumpMapFD), nil
 }
@@ -384,6 +408,7 @@ func UpdateMapEntry(mapFD uint32, k, v []byte) error {
 }
 
 func GetMapEntry(mapFD uint32, k []byte, valueSize int) ([]byte, error) {
+	log.Infof("GetMapEntry got mapFD %d, key %x", mapFD, k)
 	val := make([]byte, valueSize)
 
 	_, err := C.bpf_map__lookup_elem(C.uint(mapFD), unsafe.Pointer(&k[0]), unsafe.Pointer(&val[0]))
@@ -397,6 +422,22 @@ func GetMapEntry(mapFD uint32, k []byte, valueSize int) ([]byte, error) {
 func DeleteMapEntry(mapFD uint32, k []byte, valueSize int) error {
 	_, err := C.bpf_map__delete_elem(C.uint(mapFD), unsafe.Pointer(&k[0]))
 	return err
+}
+
+func ShowMapEntries(mapFD uint32, valueSize int) error {
+	k := make([]byte, 4)
+	index := 0
+	binary.LittleEndian.PutUint32(k, uint32(index))
+	for {
+		readback, err := GetMapEntry(mapFD, k, valueSize)
+		if err != nil {
+			log.Errorf("GetMapEntry failed to get with err %v", err)
+			return err
+		}
+		log.Infof("GetMapEntry got key %d, value %x", index, readback)
+		break
+	}
+	return nil
 }
 
 //--------------------------------------
@@ -413,26 +454,20 @@ func RunAnotherProgram() int {
 	return int(id)
 }
 
-func ObjectTest(path string, progName string) error {
-	obj, err := LoadObject(path)
-	if err != nil {
-		log.WithError(err).Errorf("Failed to open object file %s", path)
-		return err
-	}
-
+func ShowObjectDetails(obj *Obj) error {
 	m0, err := obj.FirstMap()
 	if err != nil {
-		log.WithError(err).Errorf("Failed to get first map %s", path)
+		log.WithError(err).Errorf("Failed to get first map")
 		return err
 	}
 
-	log.Infof("First map is %s", m0.Name())
+	log.Infof("First map is %s, fd %d", m0.Name(), m0.Fd())
 
 	m := m0
 	for {
 		m, err = m.NextMap()
 		if err != nil {
-			log.WithError(err).Errorf("Failed to get first map %s", path)
+			log.WithError(err).Errorf("Failed to get next map")
 			return err
 		}
 
@@ -441,12 +476,19 @@ func ObjectTest(path string, progName string) error {
 			break
 		}
 
-		log.Infof("Next map is %s", m.Name())
+		t, keySize, valueSize, maxEntries, err := GetMapInfo(uint32(m.Fd()))
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get map info")
+			return err
+		}
+
+		log.Infof("Next map is %s, fd %d -- type: %d, keySize %d, valueSize %d, maxEntries %d",
+			m.Name(), m.Fd(), t, keySize, valueSize, maxEntries)
 	}
 
 	p0, err := obj.FirstProgram()
 	if err != nil {
-		log.WithError(err).Errorf("Failed to get first program %s", path)
+		log.WithError(err).Errorf("Failed to get first program")
 		return err
 	}
 
@@ -456,7 +498,7 @@ func ObjectTest(path string, progName string) error {
 	for {
 		p, err = p.NextProgram()
 		if err != nil {
-			log.WithError(err).Errorf("Failed to get first program %s", path)
+			log.WithError(err).Errorf("Failed to get next program")
 			return err
 		}
 
@@ -466,6 +508,15 @@ func ObjectTest(path string, progName string) error {
 		}
 
 		log.Infof("Next program is %s", p.Name())
+	}
+	return nil
+}
+
+func ObjectTest(path string, progName string) error {
+	obj, err := LoadObject(path)
+	if err != nil {
+		log.WithError(err).Errorf("Failed to open object file %s", path)
+		return err
 	}
 
 	cProgName := C.CString(progName)
