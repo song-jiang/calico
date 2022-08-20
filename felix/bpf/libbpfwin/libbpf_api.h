@@ -195,9 +195,7 @@ bpf_program__xdp_attach(struct bpf_object *obj, char* progName, int ifindex)
     return 0;
 }
 
-
-
-uint32_t
+int
 bpf_program__load_bytecode(
     enum bpf_prog_type type,
     void *insns,
@@ -207,9 +205,7 @@ bpf_program__load_bytecode(
     void* log_buf,
     size_t log_buf_sz)
 {
-    // uint32_t program_fd = bpf_load_program(type, (struct ebpf_inst*)insns, insns_cnt, license, kern_version, log_buf, log_buf_sz);
-
-    uint32_t program_fd = bpf_load_program(BPF_PROG_TYPE_XDP, (struct ebpf_inst*)insns, insns_cnt, nullptr, 0, nullptr, 0);
+    int program_fd = bpf_load_program(BPF_PROG_TYPE_XDP, (struct ebpf_inst*)insns, insns_cnt, nullptr, 0, log_buf, log_buf_sz);
     fprintf(stdout, "Load program with fd: %d\n", program_fd);
     if (program_fd <= 0) {
         set_errno(ENOENT);
@@ -220,7 +216,7 @@ bpf_program__load_bytecode(
     uint32_t program_info_size = sizeof(program_info);
     if (bpf_obj_get_info_by_fd(program_fd, &program_info, &program_info_size) < 0) {
         fprintf(stderr, "Failed to call bpf_obj_get_info_by fd: %d\n", errno);
-        return -1;
+        return -2;
     }
 
     // TODO(issue #223): change below to BPF_PROG_TYPE_XDP.

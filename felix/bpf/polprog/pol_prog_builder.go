@@ -318,11 +318,12 @@ func (p *Builder) writeProgramFooter(forXDP bool) {
 		// Store the policy result in the state for the next program to see.
 		p.b.MovImm32(R1, int32(state.PolicyAllow))
 		p.b.Store32(R9, R1, stateOffPolResult)
+
 		// Execute the tail call.
 		p.b.Mov64(R1, R6)                      // First arg is the context.
 		p.b.LoadMapFD(R2, uint32(p.jumpMapFD)) // Second arg is the map.
 		p.b.MovImm32(R3, jumpIdxAllowed)       // Third arg is the index (rather than a pointer to the index).
-		p.b.Call(HelperTailCall)
+		p.b.Call(HelperTailCallWindows)
 
 		// Fall through if tail call fails.
 		p.b.MovImm32(R1, state.PolicyTailCallFailed)

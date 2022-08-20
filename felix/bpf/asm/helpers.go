@@ -134,4 +134,6 @@ const (
 	HelperProbeReadKernel        Helper = 113
 	HelperProbeReadUserStr       Helper = 114
 	HelperProbeReadKernelStr     Helper = 115
+
+	HelperTailCallWindows Helper = 5
 )

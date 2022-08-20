@@ -155,12 +155,13 @@ func LoadXDPObject(filename string) (string, error) {
 
 	log.Infof("Get progFD %d for xdp_calico_entry", progFD)
 
-	result := C.bpf_program__xdp_attach(xdpObj.obj, cProgName, 4)
+	ifindex := 7
+	result := C.bpf_program__xdp_attach(xdpObj.obj, cProgName, C.int(ifindex))
 	if result < 0 {
 		log.Errorf("attach program failed %d", result)
 		return "", fmt.Errorf("Failed to attach program")
 	}
-	log.Info("Attach program done")
+	log.Info("Attach program done. ifindex %d", ifindex)
 
 	/*
 		for {
@@ -360,7 +361,19 @@ func CreateMap(map_type string, key_size int, value_size int, max_entries int, m
 	return int(fd), nil
 }
 
+func dumpAsm(insns asm.Insns) {
+	for i, bytes := range insns {
+		oneline := fmt.Sprintf("%d -- ", i)
+		for _, b := range bytes {
+			oneline += fmt.Sprintf("%02x ", b)
+		}
+		log.Infof("%s", oneline)
+	}
+}
+
 func LoadBPFProgramFromInsns(insns asm.Insns, license string, progType uint32) (uint32, error) {
+	dumpAsm(insns)
+
 	cInsnBytes := C.CBytes(insns.AsBytes())
 	defer C.free(cInsnBytes)
 	cLicense := C.CString(license)
@@ -378,7 +391,7 @@ func LoadBPFProgramFromInsns(insns asm.Insns, license string, progType uint32) (
 	log.Infof("load byte code returns %d, err %v", fd, err)
 	if err != nil {
 		goLog := strings.TrimSpace(C.GoString((*C.char)(logBuf)))
-		fmt.Println("BPF_PROG_LOAD failed")
+		fmt.Printf("BPF_PROG_LOAD failed %v\n", goLog)
 		if len(goLog) > 0 {
 			for _, l := range strings.Split(goLog, "\n") {
 				fmt.Printf("BPF Verifier:    ", l)
@@ -386,6 +399,7 @@ func LoadBPFProgramFromInsns(insns asm.Insns, license string, progType uint32) (
 		} else if logSize > 0 {
 			fmt.Printf("Verifier log was empty.")
 		}
+		fmt.Println("\n")
 	}
 
 	if err != nil {
