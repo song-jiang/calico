@@ -137,6 +137,20 @@ func LoadXDPObject(filename string) (string, error) {
 	log.Infof("Got cali_jump mapFD %d", mapFD)
 	xdpObj.jumpMapFD = int(mapFD)
 
+	cProg0 := C.CString("calico_xdp_norm_pol_tail")
+	defer C.free(unsafe.Pointer(cProg0))
+	errno := C.bpf_update_jump_map(xdpObj.obj, cMapName, cProg0, 0)
+	if errno < 0 {
+		return "", fmt.Errorf("Failed to update jump map index 0")
+	}
+
+	cProg1 := C.CString("calico_xdp_accepted_entrypoint")
+	defer C.free(unsafe.Pointer(cProg1))
+	errno = C.bpf_update_jump_map(xdpObj.obj, cMapName, cProg1, 1)
+	if errno < 0 {
+		return "", fmt.Errorf("Failed to update jump map index 1")
+	}
+
 	cMapName = C.CString("trace_map")
 	mapFD = C.bpf_map__get_map_fd_by_name(xdpObj.obj, cMapName)
 	if mapFD <= 0 {
@@ -155,7 +169,7 @@ func LoadXDPObject(filename string) (string, error) {
 
 	log.Infof("Get progFD %d for xdp_calico_entry", progFD)
 
-	ifindex := 7
+	ifindex := 4
 	result := C.bpf_program__xdp_attach(xdpObj.obj, cProgName, C.int(ifindex))
 	if result < 0 {
 		log.Errorf("attach program failed %d", result)
