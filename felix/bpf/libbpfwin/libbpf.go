@@ -115,7 +115,7 @@ func OpenObject(filename string) (*Obj, error) {
 
 var xdpObj *Obj
 
-func LoadXDPObject(filename string) (string, error) {
+func LoadXDPObject(filename string, showStats bool) (string, error) {
 	var err error
 	xdpObj, err = LoadObject(filename)
 	if err != nil {
@@ -169,20 +169,20 @@ func LoadXDPObject(filename string) (string, error) {
 
 	log.Infof("Get progFD %d for xdp_calico_entry", progFD)
 
-	ifindex := 4
+	ifindex := 16
 	result := C.bpf_program__xdp_attach(xdpObj.obj, cProgName, C.int(ifindex))
 	if result < 0 {
 		log.Errorf("attach program failed %d", result)
 		return "", fmt.Errorf("Failed to attach program")
 	}
-	log.Info("Attach program done. ifindex %d", ifindex)
+	log.Infof("Attach program done. ifindex %d", ifindex)
 
-	/*
+	if showStats {
 		for {
 			C.show_stats(C.int(mapFD))
 			time.Sleep(10 * time.Second)
 		}
-	*/
+	}
 
 	return fmt.Sprintf("%d", xdpObj.jumpMapFD), nil
 }

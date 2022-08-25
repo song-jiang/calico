@@ -35,7 +35,7 @@ func main() {
 		}
 	*/
 
-	_, err := ebpfwin.LoadXDPObject("c:\\k\\xdp.o")
+	_, err := ebpfwin.LoadXDPObject("c:\\k\\xdp.o", true)
 	if err != nil {
 		fmt.Printf("From main.go load xdp object %v", err)
 		return
