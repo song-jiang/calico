@@ -17,8 +17,11 @@ package libbpfwin
 // #include "libbpf_api.h"
 import "C"
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
+	"os/exec"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -57,6 +60,45 @@ const (
 	QdiskIngress QdiskHook = "ingress"
 	QdiskEgress  QdiskHook = "egress"
 )
+
+func powershell(args ...string) (string, string, error) {
+	ps, err := exec.LookPath("powershell.exe")
+	if err != nil {
+		return "", "", err
+	}
+
+	args = append([]string{"-NoProfile", "-NonInteractive"}, args...)
+	cmd := exec.Command(ps, args...)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err = cmd.Run()
+	if err != nil {
+		return "", "", err
+	}
+
+	return stdout.String(), stderr.String(), err
+}
+
+func GetIfindex(name string) int {
+	cmd := fmt.Sprintf(`Get-NetAdapter | where Name -EQ '%s' | Select-object  -ExpandProperty ifIndex`, name)
+	sIndex, _, err := powershell(cmd)
+	if err != nil {
+		log.Error("can't get interface index")
+		return 0
+	}
+	s := strings.TrimSpace(sIndex)
+	log.Infof("Found interface %s, len %d", s, len(s))
+	index, err := strconv.Atoi(s)
+	if err != nil {
+		log.Errorf("get error %v", err)
+		log.Panic("failed to convert ifindex")
+	}
+	return index
+}
 
 // real functions
 func (m *Map) Name() string {
@@ -169,7 +211,7 @@ func LoadXDPObject(filename string, showStats bool) (string, error) {
 
 	log.Infof("Get progFD %d for xdp_calico_entry", progFD)
 
-	ifindex := 16
+	ifindex := GetIfindex("Ethernet 2")
 	result := C.bpf_program__xdp_attach(xdpObj.obj, cProgName, C.int(ifindex))
 	if result < 0 {
 		log.Errorf("attach program failed %d", result)
@@ -482,6 +524,8 @@ func RunAnotherProgram() int {
 	return int(id)
 }
 
+var IPSetMapFD int
+
 func ShowObjectDetails(obj *Obj) error {
 	m0, err := obj.FirstMap()
 	if err != nil {
@@ -508,6 +552,10 @@ func ShowObjectDetails(obj *Obj) error {
 		if err != nil {
 			log.WithError(err).Errorf("Failed to get map info")
 			return err
+		}
+
+		if m.Name() == "cali_v4_ip_sets" {
+			IPSetMapFD = m.Fd()
 		}
 
 		log.Infof("Next map is %s, fd %d -- type: %d, keySize %d, valueSize %d, maxEntries %d",

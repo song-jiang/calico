@@ -30,6 +30,8 @@ import (
 	"github.com/projectcalico/calico/felix/bpf/state"
 	"github.com/projectcalico/calico/felix/ip"
 	"github.com/projectcalico/calico/felix/proto"
+
+	"github.com/projectcalico/calico/felix/bpf/libbpfwin"
 )
 
 type Builder struct {
@@ -675,6 +677,19 @@ func (p *Builder) writeIPSetMatch(negate bool, leg matchLeg, ipSets []string) {
 
 		keyOffset := leg.stackOffsetToIPSetKey()
 		p.setUpIPSetKey(id, keyOffset, leg.offsetToStateIPAddressField(), leg.offsetToStatePortField())
+
+		// bpf_map_update_elem(&trace_map, &key_ip, &state_on_stack, 0);
+		p.b.LoadMapFD(R1, uint32(libbpfwin.IPSetMapFD)) // R1 = mapFD
+
+		p.b.Mov64(R2, R10)
+		p.b.AddImm64(R2, int32(keyOffset)) // R2 = &key
+
+		p.b.Mov64(R3, R10)
+		p.b.AddImm64(R3, int32(keyOffset)) // R3 = &value, keep it the same locatioin as key
+
+		p.b.MovImm64(R4, 0) // R4 = 0 flags
+		p.b.Call(HelperMapUpdateElem)
+
 		p.b.LoadMapFD(R1, uint32(p.ipSetMapFD))
 		p.b.Mov64(R2, R10)
 		p.b.AddImm64(R2, int32(keyOffset))
