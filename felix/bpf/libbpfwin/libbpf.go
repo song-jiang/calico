@@ -170,6 +170,15 @@ func LoadXDPObject(filename string, showStats bool) (string, error) {
 		return "", fmt.Errorf("error showing libbpf object %w", err)
 	}
 
+	k := make([]byte, 4)
+	v := make([]byte, 80)
+	//binary.LittleEndian.PutUint32(v, uint32(64))
+	err = UpdateMapEntry(uint32(StateMapFD), k, v)
+	if err != nil {
+		log.WithError(err).Errorf("Failed to update state map %d", StateMapFD)
+		return "", err
+	}
+
 	cMapName := C.CString("cali_jump")
 	defer C.free(unsafe.Pointer(cMapName))
 	mapFD := C.bpf_map__get_map_fd_by_name(xdpObj.obj, cMapName)
@@ -525,6 +534,7 @@ func RunAnotherProgram() int {
 }
 
 var IPSetMapFD int
+var StateMapFD int
 
 func ShowObjectDetails(obj *Obj) error {
 	m0, err := obj.FirstMap()
@@ -556,6 +566,9 @@ func ShowObjectDetails(obj *Obj) error {
 
 		if m.Name() == "cali_v4_ip_sets" {
 			IPSetMapFD = m.Fd()
+		}
+		if m.Name() == "cali_v4_state3" {
+			StateMapFD = m.Fd()
 		}
 
 		log.Infof("Next map is %s, fd %d -- type: %d, keySize %d, valueSize %d, maxEntries %d",
