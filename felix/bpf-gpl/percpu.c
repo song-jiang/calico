@@ -19,7 +19,7 @@ struct bpf_map jump_map = {BPF_MAP_TYPE_PROG_ARRAY, sizeof(uint32_t), sizeof(uin
 
 SEC("maps") struct bpf_map canary = {BPF_MAP_TYPE_ARRAY, sizeof(uint32_t), sizeof(uint32_t), 1};
 
-SEC("xdp_prog") int lookup(struct xdp_md* ctx)
+SEC("xdp_prog") int caller(struct xdp_md* ctx)
 {
     uint32_t key = 0;
     uint32_t value = 11;
