@@ -60,7 +60,7 @@ SEC("xdp_prog") int caller(struct xdp_md* ctx)
         *canary_value = 1;
     }
     
-    return 2;
+    return XDP_PASS;
 }
 
 
@@ -80,5 +80,5 @@ SEC("xdp_prog/0") int callee(struct xdp_md* ctx) {
 
     bpf_map_update_elem(&trace_map, &key_hash, &value_hash, 0);
 
-   return 2;
+   return XDP_PASS;
 }
