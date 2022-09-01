@@ -2,7 +2,7 @@
 
 SEC("maps")
 struct bpf_map_def outer_map = {
-    .type = BPF_MAP_TYPE_PERCPU_ARRAY,
+    .type = BPF_MAP_TYPE_ARRAY,
     .key_size = sizeof(uint32_t),
     .value_size = sizeof(uint32_t),
     .max_entries = 1}; // (uint32_t)&inner_map
