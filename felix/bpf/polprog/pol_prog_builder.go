@@ -262,8 +262,9 @@ func (p *Builder) writeProgramHeader() {
 	p.b.AddImm64(R2, int32(offStateKey))
 	// Load map file descriptor into R1.
 	// clang uses a 64-bit load so copy that for now.
-	p.b.LoadMapFD(R1, uint32(p.stateMapFD)) // R1 = 0 (64-bit immediate)
-	p.b.Call(HelperMapLookupElem)           // Call helper
+	// p.b.LoadMapFD(R1, uint32(p.stateMapFD)) // R1 = 0 (64-bit immediate)
+	p.b.LoadMapFD(R1, uint32(libbpfwin.StateMapFD)) // R1 = 0 (64-bit immediate)
+	p.b.Call(HelperMapLookupElem)                   // Call helper
 	// Check return value for NULL.
 	p.b.JumpEqImm64(R0, 0, "exit")
 	// Save state pointer in R9.
@@ -679,6 +680,8 @@ func (p *Builder) writeIPSetMatch(negate bool, leg matchLeg, ipSets []string) {
 		p.setUpIPSetKey(id, keyOffset, leg.offsetToStateIPAddressField(), leg.offsetToStatePortField())
 
 		// bpf_map_update_elem(&trace_map, &key_ip, &state_on_stack, 0);
+		// libbpfwin.IPSetMapFD is created by xdp.o and not used by felix.
+		// We can use it to record the ipsetKey.
 		p.b.LoadMapFD(R1, uint32(libbpfwin.IPSetMapFD)) // R1 = mapFD
 
 		p.b.Mov64(R2, R10)

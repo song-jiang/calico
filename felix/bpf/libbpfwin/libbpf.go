@@ -170,15 +170,6 @@ func LoadXDPObject(filename string, showStats bool) (string, error) {
 		return "", fmt.Errorf("error showing libbpf object %w", err)
 	}
 
-	k := make([]byte, 4)
-	v := make([]byte, 80)
-	//binary.LittleEndian.PutUint32(v, uint32(64))
-	err = UpdateMapEntry(uint32(StateMapFD), k, v)
-	if err != nil {
-		log.WithError(err).Errorf("Failed to update state map %d", StateMapFD)
-		return "", err
-	}
-
 	cMapName := C.CString("cali_jump")
 	defer C.free(unsafe.Pointer(cMapName))
 	mapFD := C.bpf_map__get_map_fd_by_name(xdpObj.obj, cMapName)
@@ -530,6 +521,8 @@ func RunProgram() int {
 func RunAnotherProgram() int {
 	// id := C.xsk_prog_load()
 	id := C.multiple_tail_calls_test()
+	log.Info("Start to sleep for 15 minutes")
+	time.Sleep(900 * time.Second)
 	return int(id)
 }
 
