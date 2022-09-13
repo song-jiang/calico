@@ -101,7 +101,7 @@ ${CLUSTERCTL} generate cluster ${CLUSTER_NAME_CAPZ} \
   --kubernetes-version v${KUBE_VERSION} \
   --control-plane-machine-count=1 \
   --worker-machine-count=${WIN_NODE_COUNT}\
-  --flavor machinepool-windows-containerd \
+  --flavor machinepool-windows \
   > win-capz.yaml
 
 function retry_command() {

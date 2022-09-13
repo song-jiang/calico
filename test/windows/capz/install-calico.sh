@@ -54,7 +54,7 @@ echo "Set release base url ${RELEASE_BASE_URL}"
 # Install on Linux side
 ${KCAPZ} create -f ${RELEASE_BASE_URL}/manifests/tigera-operator.yaml
 
-${KCAPZ} create -f ${RELEASE_BASE_URL}/manifests/custom-resources.yaml
+${KCAPZ} create -f ./custom-resources.yaml
 
 watch ${KCAPZ} get pods -n calico-system
 
