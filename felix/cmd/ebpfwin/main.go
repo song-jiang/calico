@@ -15,6 +15,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 
 	ebpfwin "github.com/projectcalico/calico/felix/bpf/libbpfwin"
@@ -24,8 +25,8 @@ func main() {
 	// progID := ebpfwin.RunProgram()
 	// fmt.Printf("From main.go: ebpfwin test RunProgram fd: %d\n\n", progID)
 
-	result := ebpfwin.RunAnotherProgram()
-	fmt.Printf("From main.go: ebpfwin test RunAnotherProgram return code: %d\n", result)
+	// result := ebpfwin.RunAnotherProgram()
+	// fmt.Printf("From main.go: ebpfwin test RunAnotherProgram return code: %d\n", result)
 
 	/*
 		err := ebpfwin.ObjectTest("c:\\k\\xdp.o", "calico_xdp_norm_pol_tail")
@@ -35,11 +36,14 @@ func main() {
 		}
 	*/
 
-	/*
-		_, err := ebpfwin.LoadXDPObject("c:\\k\\xdp.o", true)
-		if err != nil {
-			fmt.Printf("From main.go load xdp object %v", err)
-			return
-		}
-	*/
+	num := flag.Int("n", 0, "network interface index")
+	flag.Parse()
+	n := *num
+
+	_, err := ebpfwin.LoadXDPObject("c:\\k\\xdp.o", n, true)
+	if err != nil {
+		fmt.Printf("From main.go load xdp object %v", err)
+		return
+	}
+
 }

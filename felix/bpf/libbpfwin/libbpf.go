@@ -157,7 +157,7 @@ func OpenObject(filename string) (*Obj, error) {
 
 var xdpObj *Obj
 
-func LoadXDPObject(filename string, showStats bool) (string, error) {
+func LoadXDPObject(filename string, iface int, showStats bool) (string, error) {
 	var err error
 	xdpObj, err = LoadObject(filename)
 	if err != nil {
@@ -211,7 +211,12 @@ func LoadXDPObject(filename string, showStats bool) (string, error) {
 
 	log.Infof("Get progFD %d for xdp_calico_entry", progFD)
 
-	ifindex := GetIfindex("Ethernet 2")
+	ifindex := GetIfindex("vEthernet (Ethernet)")
+	if iface != 0 {
+		// overwrite if required.
+		ifindex = iface
+	}
+
 	result := C.bpf_program__xdp_attach(xdpObj.obj, cProgName, C.int(ifindex))
 	if result < 0 {
 		log.Errorf("attach program failed %d", result)
