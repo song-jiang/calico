@@ -475,6 +475,7 @@ func UpdateMapEntry(mapFD uint32, k, v []byte) error {
 	cV := C.CBytes(v)
 	defer C.free(cV)
 
+	log.Infof("UpdateMapEntry got mapFD %d, key %x", mapFD, k)
 	_, err := C.bpf_map__update_elem(C.uint(mapFD), cK, cV, 0)
 	if err != nil {
 		return err
@@ -650,5 +651,31 @@ func ObjectTest(path string, progName string) error {
 	time.Sleep(3 * time.Second)
 
 	obj.Close()
+	return nil
+}
+
+func MapTest() error {
+	k := make([]byte, 20)
+	v := make([]byte, 4)
+	binary.LittleEndian.PutUint32(k, uint32(0x60))
+	binary.LittleEndian.PutUint32(v, uint32(1))
+
+	err := UpdateMapEntry(uint32(IPSetMapFD), k, v)
+	if err != nil {
+		log.WithError(err).Error("Failed to update ipset map")
+		return err
+	}
+
+	k1 := make([]byte, 20)
+	binary.LittleEndian.PutUint32(k1, uint32(0x60000000))
+
+	v1, err := GetMapEntry(uint32(IPSetMapFD), k1, 4)
+	if err != nil {
+		log.WithError(err).Error("Failed to update ipset map")
+		return err
+	}
+
+	log.Infof("Got value %x", v1)
+
 	return nil
 }

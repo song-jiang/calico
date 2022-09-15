@@ -17,6 +17,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"time"
 
 	ebpfwin "github.com/projectcalico/calico/felix/bpf/libbpfwin"
 )
@@ -40,10 +41,21 @@ func main() {
 	flag.Parse()
 	n := *num
 
-	_, err := ebpfwin.LoadXDPObject("c:\\k\\xdp.o", n, true)
+	_, err := ebpfwin.LoadXDPObject("c:\\k\\xdp.o", n, false)
 	if err != nil {
 		fmt.Printf("From main.go load xdp object %v", err)
 		return
+	}
+
+	err = ebpfwin.MapTest()
+	if err != nil {
+		fmt.Printf("From main.go map test %v", err)
+		return
+	}
+
+	for {
+		fmt.Print("sleep 10 seconds\n")
+		time.Sleep(10 * time.Second)
 	}
 
 }
