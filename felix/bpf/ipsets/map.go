@@ -96,7 +96,7 @@ func ProtoIPSetMemberToBPFEntry(id uint64, member string) *IPSetEntry {
 	var port uint16
 	var protocol uint8
 	if strings.Contains(member, ",") {
-		// Named port
+		// Named port "192.168.1.2,tcp:8080"
 		parts := strings.Split(member, ",")
 		cidrStr = parts[0]
 		parts = strings.Split(parts[1], ":")

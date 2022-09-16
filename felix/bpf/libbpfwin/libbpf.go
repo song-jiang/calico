@@ -211,10 +211,11 @@ func LoadXDPObject(filename string, iface int, showStats bool) (string, error) {
 
 	log.Infof("Get progFD %d for xdp_calico_entry", progFD)
 
-	ifindex := GetIfindex("vEthernet (Ethernet)")
+	var ifindex int
 	if iface != 0 {
-		// overwrite if required.
 		ifindex = iface
+	} else {
+		ifindex = GetIfindex("vEthernet (Ethernet)")
 	}
 
 	result := C.bpf_program__xdp_attach(xdpObj.obj, cProgName, C.int(ifindex))
@@ -655,23 +656,35 @@ func ObjectTest(path string, progName string) error {
 }
 
 func MapTest() error {
-	k := make([]byte, 20)
+	// k := make([]byte, 20)
 	v := make([]byte, 4)
-	binary.LittleEndian.PutUint32(k, uint32(0x60))
-	binary.LittleEndian.PutUint32(v, uint32(1))
+	//binary.LittleEndian.PutUint32(k, uint32(0x08))
+	binary.LittleEndian.PutUint32(v, uint32(64))
 
-	err := UpdateMapEntry(uint32(IPSetMapFD), k, v)
+	var id uint64
+	id = 0x520761ad9b7dadab
+	entry := ProtoIPSetMemberToBPFEntry(id, "192.168.123.133")
+	if entry == nil {
+		log.Error("Failed to get ip set entry")
+		return fmt.Errorf("failed to get ip set entry")
+	}
+
+	err := UpdateMapEntry(uint32(IPSetMapFD), entry[:], v)
 	if err != nil {
 		log.WithError(err).Error("Failed to update ipset map")
 		return err
 	}
 
-	k1 := make([]byte, 20)
-	binary.LittleEndian.PutUint32(k1, uint32(0x60000000))
+	// k1 := make([]byte, 20)
+	// binary.LittleEndian.PutUint32(k1, uint32(0x20))
+	entry[0] = 0x80
+	entry[16] = 0xfc
+	entry[17] = 0xea
+	entry[18] = 06
 
-	v1, err := GetMapEntry(uint32(IPSetMapFD), k1, 4)
+	v1, err := GetMapEntry(uint32(IPSetMapFD), entry[:], 4)
 	if err != nil {
-		log.WithError(err).Error("Failed to update ipset map")
+		log.WithError(err).Error("Failed to read ipset map")
 		return err
 	}
 
