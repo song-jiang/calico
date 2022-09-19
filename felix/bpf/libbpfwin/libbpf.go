@@ -424,13 +424,16 @@ func CreateMap(map_type string, key_size int, value_size int, max_entries int, m
 }
 
 func dumpAsm(insns asm.Insns) {
+	all := ""
 	for i, bytes := range insns {
 		oneline := fmt.Sprintf("%d -- ", i)
 		for _, b := range bytes {
 			oneline += fmt.Sprintf("%02x ", b)
 		}
-		log.Infof("%s", oneline)
+		all = fmt.Sprintf("%s\n%s", all, oneline)
+		//log.Infof("%s", oneline)
 	}
+	log.Infof("%s", all)
 }
 
 func LoadBPFProgramFromInsns(insns asm.Insns, license string, progType uint32) (uint32, error) {
