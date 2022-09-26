@@ -158,12 +158,18 @@ func OpenObject(filename string) (*Obj, error) {
 var xdpObj *Obj
 
 func LoadXDPObject(filename string, iface int, showStats bool) (string, error) {
+	// Makes sure xdp object file exists.
+	// Or we will hit error :
+	// load byte code returns -1, err A defective sector on drive %1 has been replaced (hotfixed).No data was lost.
+	// You should run CHKDSK soon to restore full
+	// performance and replenish the volume's spare sector pool.
+
 	var err error
 	xdpObj, err = LoadObject(filename)
 	if err != nil {
 		return "", fmt.Errorf("error loading libbpf object %w", err)
 	}
-	log.Infof("XDP object file loaded %s", filename)
+	log.Infof("XDP object file loaded %s on iface index %d", filename, iface)
 
 	err = ShowObjectDetails(xdpObj)
 	if err != nil {
