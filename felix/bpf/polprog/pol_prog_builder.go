@@ -303,16 +303,16 @@ func (p *Builder) writeProgramFooter(forXDP bool) {
 
 	if forXDP {
 		p.b.LabelNextInsn("exit")
-		p.b.MovImm64(R0, 1 /* XDP_DROP */)
+		p.b.MovImm64(R0, 2 /* XDP_DROP */) // DROP on Windows : 2, DROP on Linux: 1
 	} else {
 		p.b.LabelNextInsn("exit")
-		p.b.MovImm64(R0, 2 /* TC_ACT_SHOT */)
+		p.b.MovImm64(R0, 1 /* TC_ACT_SHOT */)
 	}
 	p.b.Exit()
 
 	if forXDP {
 		p.b.LabelNextInsn("xdp_pass")
-		p.b.MovImm64(R0, 2 /* XDP_PASS */)
+		p.b.MovImm64(R0, 1 /* XDP_PASS */)
 		p.b.Exit()
 	}
 
@@ -331,7 +331,7 @@ func (p *Builder) writeProgramFooter(forXDP bool) {
 		// Fall through if tail call fails.
 		p.b.MovImm32(R1, state.PolicyTailCallFailed)
 		p.b.Store32(R9, R1, stateOffPolResult)
-		p.b.MovImm64(R0, 2 /* TC_ACT_SHOT */)
+		p.b.MovImm64(R0, 1 /* TC_ACT_SHOT */)
 		p.b.Exit()
 	}
 }
@@ -665,6 +665,27 @@ func (p *Builder) writeCIDRSMatch(negate bool, leg matchLeg, cidrs []string) {
 		// Label the next match so we can skip to it on success.
 		p.b.LabelNextInsn(onMatchLabel)
 	}
+}
+
+func (p *Builder) DebugWriteIPSetMap(leg matchLeg) {
+	id := uint64(0x12345678)
+
+	keyOffset := leg.stackOffsetToIPSetKey()
+	p.setUpIPSetKey(id, keyOffset, leg.offsetToStateIPAddressField(), leg.offsetToStatePortField())
+
+	// bpf_map_update_elem(&trace_map, &key_ip, &state_on_stack, 0);
+	// libbpfwin.IPSetMapFD is created by xdp.o and not used by felix.
+	// We can use it to record the ipsetKey.
+	p.b.LoadMapFD(R1, uint32(libbpfwin.IPSetMapFD)) // R1 = mapFD
+
+	p.b.Mov64(R2, R10)
+	p.b.AddImm64(R2, int32(keyOffset)) // R2 = &key
+
+	p.b.Mov64(R3, R10)
+	p.b.AddImm64(R3, int32(keyOffset)) // R3 = &value, keep it the same locatioin as key
+
+	p.b.MovImm64(R4, 0) // R4 = 0 flags
+	p.b.Call(HelperMapUpdateElem)
 }
 
 func (p *Builder) writeIPSetMatch(negate bool, leg matchLeg, ipSets []string) {
