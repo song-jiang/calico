@@ -58,14 +58,14 @@ $(BINDIR):
 	mkdir -p $(BINDIR)
 
 $(BINDIR)/kind: $(BINDIR)
-	GOBIN=$(CURRENT_DIR)/$(BINDIR) go install sigs.k8s.io/kind@v0.11.1
+	GOBIN=$(CURRENT_DIR)/$(BINDIR) go install sigs.k8s.io/kind@v0.14.0
 
 $(BINDIR)/kubectl: $(BINDIR)
 	curl -L https://storage.googleapis.com/kubernetes-release/release/v1.22.0/bin/linux/$(ARCH)/kubectl -o $@
 	chmod +x $(BINDIR)/kubectl
 
 $(BINDIR)/clusterctl: $(BINDIR)
-	curl -L https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.1.2/clusterctl-linux-amd64 -o $(BINDIR)/clusterctl
+	curl -L https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.2.3/clusterctl-linux-amd64 -o $(BINDIR)/clusterctl
 	chmod +x $(BINDIR)/clusterctl
 	$(BINDIR)/clusterctl version
 
