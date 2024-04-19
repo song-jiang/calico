@@ -2183,9 +2183,11 @@ func (d *InternalDataplane) apply() {
 		}(r)
 	}
 
+	log.Error("Start wait for flushing...")
 	// Wait for the IP sets update to finish.  We can't update iptables until it has.
 	ipSetsWG.Wait()
 
+	log.Error("Start wait for flushing done!")
 	// Update iptables, this should sever any references to now-unused IP sets.
 	var reschedDelayMutex sync.Mutex
 	var reschedDelay time.Duration
