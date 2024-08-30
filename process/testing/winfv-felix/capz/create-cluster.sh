@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2022 Tigera, Inc. All rights reserved.
+# Copyright (c) 2024 Tigera, Inc. All rights reserved.
 # Copyright 2020 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -58,9 +58,9 @@ echo az role assignment create --assignee-object-id "${USER_IDENTITY_ID}" --assi
 az role assignment create --assignee-object-id "${USER_IDENTITY_ID}" --assignee-principal-type "ServicePrincipal" --role "Contributor" --scope "/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/${CI_RG}"
 } >> az-output.log 2>&1
 
-# Number of Linux worker nodes is the same as number of Windows worker nodes
-: ${WIN_NODE_COUNT:=2}
-TOTAL_NODES=$((WIN_NODE_COUNT*2+1))
+: ${WINDOWS_NODE_COUNT:=2}
+: ${LINUX_NODE_COUNT:=2}
+TOTAL_NODES=$((WINDOWS_NODE_COUNT+LINUX_NODE_COUNT+1))
 SEMAPHORE="${SEMAPHORE:="false"}"
 SUFFIX=""
 
@@ -68,6 +68,7 @@ echo Settings:
 echo '  CLUSTER_NAME_CAPZ='${CLUSTER_NAME_CAPZ}
 echo '  AZURE_LOCATION='${AZURE_LOCATION}
 echo '  KUBE_VERSION='${KUBE_VERSION}
+echo '  LINUX_NODE_COUNT='${LINUX_NODE_COUNT}
 echo '  WIN_NODE_COUNT='${WIN_NODE_COUNT}
 
 # Utilities
@@ -130,13 +131,19 @@ export AZURE_SSH_PUBLIC_KEY
 ${CLUSTERCTL} generate cluster ${CLUSTER_NAME_CAPZ} \
   --kubernetes-version ${KUBE_VERSION} \
   --control-plane-machine-count=1 \
-  --worker-machine-count=${WIN_NODE_COUNT}\
+  --worker-machine-count=${LINUX_NODE_COUNT}\
   --flavor machinepool-windows \
   > win-capz.yaml
+
+# Update Linux node count and Windows node count.
+${YQ} -i "with(. | select(.kind == \"MachinePool\" and .metadata.name == \"${CLUSTER_NAME_CAPZ}-mp-0\"); .spec.replicas |= ${LINUX_NODE_COUNT})" win-capz.yaml
+${YQ} -i "with(. | select(.kind == \"MachinePool\" and .metadata.name == \"${CLUSTER_NAME_CAPZ}-mp-win\"); .spec.replicas |= ${WINDOWS_NODE_COUNT})" win-capz.yaml
 
 # Cluster templates authenticate with Workload Identity by default. Modify the AzureClusterIdentity for ServicePrincipal authentication.
 # See https://capz.sigs.k8s.io/topics/identities for more details.
 ${YQ} -i "with(. | select(.kind == \"AzureClusterIdentity\"); .spec.type |= \"ServicePrincipal\" | .spec.clientSecret.name |= \"${AZURE_CLUSTER_IDENTITY_SECRET_NAME}\" | .spec.clientSecret.namespace |= \"${AZURE_CLUSTER_IDENTITY_SECRET_NAMESPACE}\")" win-capz.yaml
+
+
 
 retry_command 600 "${KUBECTL} apply -f win-capz.yaml"
 

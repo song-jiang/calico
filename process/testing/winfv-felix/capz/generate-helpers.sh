@@ -29,7 +29,7 @@ if [ "$(scp -O 2>&1 | grep -c 'unknown option -- O')" -gt 0 ]; then
 fi
 
 : ${KUBECTL:=${LOCAL_PATH}/bin/kubectl}
-: ${WIN_NODE_COUNT:=2}
+: ${WINDOWS_NODE_COUNT:=2}
 
 KCAPZ="${KUBECTL} --kubeconfig=./kubeconfig"
 
@@ -74,7 +74,7 @@ IP0=`$KCAPZ get node win-p-win000000 -o jsonpath='{.status.addresses[?(@.type=="
 echo; echo "Windows nodes IPs"
 echo "IP0: $IP0"
 
-if [[ $WIN_NODE_COUNT -gt 1 ]]; then
+if [[ $WINDOWS_NODE_COUNT -gt 1 ]]; then
   IP1=`$KCAPZ get node win-p-win000001 -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}'`
   echo "IP1: $IP1"
 fi
