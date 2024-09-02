@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    pod-name: busybox
+  name: busybox
+  namespace: demo
+spec:
+  containers:
+    - args:
+        - /bin/sh
+        - -c
+        - sleep 360000
+      # Use 1.28 to work around nslookup issue.
+      # Make it easier to debug DNS issue if we hit any.
+      image: busybox:1.28
+      imagePullPolicy: Always
+      name: busybox
+  nodeSelector:
+    kubernetes.io/os: linux

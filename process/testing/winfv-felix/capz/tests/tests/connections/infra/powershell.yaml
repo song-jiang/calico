@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pwsh
+  namespace: demo
+  labels:
+    app: pwsh
+spec:
+    containers:
+    - name: pwsh
+      image: mcr.microsoft.com/windows/servercore:ltsc2022
+      args:
+      - powershell.exe
+      - -Command
+      - "Start-Sleep 360000"
+      # We expect servercore exists already.
+      imagePullPolicy: IfNotPresent    
+    # This is for Openshift
+    securityContext:
+      seLinuxOptions: {}
+    nodeSelector:
+      test.connection.windows.node: node1
