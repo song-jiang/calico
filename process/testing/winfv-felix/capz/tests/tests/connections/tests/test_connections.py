@@ -104,17 +104,24 @@ class WindowsResources(object):
         )
 
         if self.container_runtime.startswith("containerd") :
-            container = run(
+            output = run(
                 "%s 'ctr.exe -n k8s.io containers list' | grep servercore | cut -d ' ' -f1"
                 % self.node1_winrm
             )
         else:
-            container = run(
+            output = run(
                 "%s 'docker ps -a' | grep powershell.exe | cut -d ' ' -f1"
                 % self.node1_winrm
             )
+        # Remove warning lines.
+        # Iterate through each line in the output
+        for line in output.splitlines():
+            # Check if the line is a hexadecimal string
+            if all(c in "0123456789abcdefABCDEF" for c in line.strip()):
+                self.pwsh_container = line
+                break
+        _log.info("pwsh container: '%s'", self.pwsh_container)
 
-        self.pwsh_container = container.strip()
         self.nginx_pod_ip = kubectl(
             "get endpoints nginx -n demo -o jsonpath='{.subsets[0].addresses[0].ip}'"
         )
@@ -148,6 +155,7 @@ class WindowsResources(object):
                 self.pwsh_container,
                 target,
             )
+        print("run command: %s" % cmd)
         output = run("%s '%s'" % (self.node1_winrm, cmd))
         self.can_connect(output)
 

@@ -13,7 +13,6 @@ TEST_BASE_DIR="$SCRIPT_DIR/.."
 # This will make the tests more self contained and have less impact on the CAPZ base code.
 cp $TEST_BASE_DIR/ssh-node.sh ${SCRIPT_DIR}
 cp $TEST_BASE_DIR/scp-to-node.sh ${SCRIPT_DIR}
-cp $TEST_BASE_DIR/.sshkey ${SCRIPT_DIR}
 
 # Prepare Windows nodes.
 WIN_NODES=$(${KCAPZ} get nodes -o wide -l kubernetes.io/os=windows --no-headers | awk '{print $6}' | awk -F '.' '{print $4}' | sort)
@@ -23,8 +22,8 @@ do
   ./ssh-node.sh $n "c:\\k\\prepare-windows-nodes.ps1"
 done
 
-TESTS_TO_RUN="tests"
-#TESTS_TO_RUN="test_windows_pod_to_linux_pod"
+#TESTS_TO_RUN="tests"
+TESTS_TO_RUN="tests.connections.tests.test_connections:TestWindowsConnections.test_windows_pod_to_linux_pod"
 
 TEST_CONTAINER_NAME="calico/test:latest-amd64"
 
@@ -47,15 +46,20 @@ fi
 # These helper scripts will be used to run inside the test container. 
 sed -i 's#[^ ]*/\.sshkey#/code/.sshkey#g' ./ssh-node.sh ./scp-to-node.sh
 
+# Fix error: Pseudo-terminal will not be allocated because stdin is not a terminal when ./ssh-node.sh 
+# being called from python test script.
+sed -i 's/-t /-tt /' ./ssh-node.sh
+
 docker run --rm \
   -v "${SCRIPT_DIR}:/code" \
+  -v "${TEST_BASE_DIR}/.sshkey:/code/.sshkey" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "${KUBECONFIG_FILE}:/root/.kube/config" \
   -v "${KUBECTL_FILE}:/bin/kubectl" \
   --privileged \
   --net host \
   ${TEST_CONTAINER_NAME} \
-  sh -c "echo 'container started..' && cd /code/tests/connections && nosetests ${TESTS_TO_RUN} -v --with-xunit --xunit-file='/code/tests/report/connections-tests.xml' --with-timer"
+  sh -c "echo 'container started..' && cd /code/tests/connections && nosetests ${TESTS_TO_RUN} -v --nocapture --with-xunit --xunit-file='/code/tests/report/connections-tests.xml' --with-timer"
 
 EXIT_CODE=$?
 echo "Windows connections tests exit code was ${EXIT_CODE}"
@@ -66,4 +70,5 @@ if [ -f "$trigger" ]; then
   echo "[CALICO_DEBUG] continue..."
 fi
 
+rm ./ssh-node.sh ./scp-to-node.sh
 exit ${EXIT_CODE}
