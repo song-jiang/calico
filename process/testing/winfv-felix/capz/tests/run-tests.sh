@@ -1,5 +1,5 @@
 #!/bin/bash
-set -x
+set -ex
 
 # Get the absolute path of the script.
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
@@ -14,16 +14,31 @@ TEST_BASE_DIR="$SCRIPT_DIR/.."
 cp $TEST_BASE_DIR/ssh-node.sh ${SCRIPT_DIR}
 cp $TEST_BASE_DIR/scp-to-node.sh ${SCRIPT_DIR}
 
-# Prepare Windows nodes.
-WIN_NODES=$(${KCAPZ} get nodes -o wide -l kubernetes.io/os=windows --no-headers | awk '{print $6}' | awk -F '.' '{print $4}' | sort)
-for n in ${WIN_NODES}
+# Prepare Windows nodes. Pull all images in advance.
+WIN_NODE_IPS=$(${KCAPZ} get nodes -o wide -l kubernetes.io/os=windows --no-headers | awk '{print $6}' | awk -F '.' '{print $4}' | sort)
+for n in ${WIN_NODE_IPS}
 do
   ./scp-to-node.sh $n ./prepare-windows-nodes.ps1 c:\\k\\prepare-windows-nodes.ps1
   ./ssh-node.sh $n "c:\\k\\prepare-windows-nodes.ps1"
 done
 
-#TESTS_TO_RUN="tests"
-TESTS_TO_RUN="tests.connections.tests.test_connections:TestWindowsConnections.test_windows_pod_to_linux_pod"
+# Update labels of Windows nodes and create test pods.
+index=1
+WIN_NODES_NAMES=$(${KCAPZ} get nodes -o wide -l kubernetes.io/os=windows --no-headers | awk '{print $1}' | sort)
+for n in ${WIN_NODES_NAMES}
+do
+  ${KCAPZ} --overwrite=true label node $n test.connection.windows.node=node$index
+  index=$((index + 1))
+done
+
+${KCAPZ} create ns demo || true
+${KCAPZ} apply -R -f ${SCRIPT_DIR}/tests/connections/infra/
+
+${KCAPZ} wait --for=condition=Ready pods --all --namespace=demo --timeout=60s
+
+# Start to run the tests.
+TESTS_TO_RUN="tests"
+#TESTS_TO_RUN="tests.connections.tests.test_connections:TestWindowsConnections.test_windows_pod_to_windows_service_name"
 
 TEST_CONTAINER_NAME="calico/test:latest-amd64"
 

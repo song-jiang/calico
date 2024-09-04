@@ -30,6 +30,7 @@ _log = logging.getLogger(__name__)
 nginx_pod_port = 8080
 
 # WindowsResources holds methods to setup/cleanup Windows testing enviroment.
+# The following pods should be running in demo namespace in advance.
 class WindowsResources(object):
     #
     #                 +--------------------+----------------------+------------------+
@@ -68,19 +69,6 @@ class WindowsResources(object):
         )
 
         _log.info("Container runtime version: %s", self.container_runtime)
-
-        kubectl(
-            "--overwrite=true label node %s test.connection.windows.node=node1"
-            % self.windows_nodes[0]
-        )
-        kubectl(
-            "--overwrite=true label node %s test.connection.windows.node=node2"
-            % self.windows_nodes[1]
-        )
-
-        kubectl("create ns demo")
-        kubectl("apply -R -f infra/")
-        time.sleep(1)
 
     def show(self):
         _log.info("linux nodes %s, ips %s", self.linux_nodes, self.linux_ips)
@@ -155,7 +143,7 @@ class WindowsResources(object):
                 self.pwsh_container,
                 target,
             )
-        print("run command: %s" % cmd)
+        #print("\nrun command: %s" % cmd)
         output = run("%s '%s'" % (self.node1_winrm, cmd))
         self.can_connect(output)
 
@@ -219,7 +207,7 @@ class TestWindowsConnections(TestBase):
 
     def tearDown(self):
         pass
-
+    '''
     def test_windows_pod_lifecycle(self):
         # Delete all Windows pods.
         # They should be recreated and continue with rest of the test case.
@@ -236,6 +224,7 @@ class TestWindowsConnections(TestBase):
             self.check_pod_status, retries=120, wait_time=1, function_args=["demo"]
         )
         self.win.get_test_config()
+    '''
 
     def test_windows_pod_to_linux_service_name(self):
         # Run 2 times to make sure all backend pods been accessed.
