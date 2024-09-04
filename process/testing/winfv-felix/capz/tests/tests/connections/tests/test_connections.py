@@ -79,6 +79,7 @@ class WindowsResources(object):
         kubectl("label node %s test.connection.windows.node-" % self.windows_nodes[1])
         kubectl("delete ns demo")
 
+
     def get_test_config(self):
         self.nginx_svc_name = "nginx.demo.svc.cluster.local"
         self.porter_svc_name = "porter.demo.svc.cluster.local"
@@ -101,14 +102,11 @@ class WindowsResources(object):
                 "%s 'docker ps -a' | grep powershell.exe | cut -d ' ' -f1"
                 % self.node1_winrm
             )
-        # Remove warning lines.
-        # Iterate through each line in the output
-        for line in output.splitlines():
-            # Check if the line is a hexadecimal string
-            if all(c in "0123456789abcdefABCDEF" for c in line.strip()):
-                self.pwsh_container = line
-                break
+
+        self.pwsh_container = extract_container_id(output)
         _log.info("pwsh container: '%s'", self.pwsh_container)
+        if len(self.pwsh_container) == 0:
+            raise Exception("failed to find powershell container during setup")
 
         self.nginx_pod_ip = kubectl(
             "get endpoints nginx -n demo -o jsonpath='{.subsets[0].addresses[0].ip}'"
@@ -156,10 +154,11 @@ class WindowsResources(object):
         if self.container_runtime.startswith("containerd") :
             def check_if_container_gone():
                 _log.info("Check if servercore container is still there...")
-                container = run(
+                output = run(
                     "%s 'ctr.exe -n k8s.io containers list' | grep servercore | cut -d ' ' -f1"
                     % self.node1_winrm
                 )
+                container = extract_container_id(output)
                 if container:
                     _log.info("servercore container still there: %s", container)
                     raise Exception("servercore container still there")
@@ -171,7 +170,7 @@ class WindowsResources(object):
 
     @staticmethod
     def can_connect(result):
-        if result.find("HTTP/1.1 200 OK") != -1:
+        if result.find("HTTP/1.1 200 OK") != -1 or result.find("href="):
             _log.info("connection has been made.")
         else:
             _log.warning("failed to connect, when connection was expected")
@@ -207,7 +206,7 @@ class TestWindowsConnections(TestBase):
 
     def tearDown(self):
         pass
-    '''
+ 
     def test_windows_pod_lifecycle(self):
         # Delete all Windows pods.
         # They should be recreated and continue with rest of the test case.
@@ -224,7 +223,6 @@ class TestWindowsConnections(TestBase):
             self.check_pod_status, retries=120, wait_time=1, function_args=["demo"]
         )
         self.win.get_test_config()
-    '''
 
     def test_windows_pod_to_linux_service_name(self):
         # Run 2 times to make sure all backend pods been accessed.
@@ -290,3 +288,17 @@ class TestWindowsConnections(TestBase):
 
     class ConnectionError(Exception):
         pass
+
+# This function is used to extract container id from an output of ssh-powershell, e.g.
+#   Warning: Permanently added 'song-win-capz-f59cfac.eastus2.cloudapp.azure.com,20.122.216.22' (ECDSA) to the list of known hosts.
+#   Warning: Permanently added '10.1.0.8' (ECDSA) to the list of known hosts.
+#   14f0f57fde3e3fc35989111a7e1f20e3e84575be17fc9ed5f2b28efe953ad812
+#   Connection to 10.1.0.8 closed.
+def extract_container_id(output):
+    # Remove warning lines.
+    # Iterate through each line in the output
+    for line in output.splitlines():
+        # Check if the line is a hexadecimal string
+        if all(c in "0123456789abcdefABCDEF" for c in line.strip()):
+            return line
+    return ''
