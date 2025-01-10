@@ -30,6 +30,8 @@ func main() {
 	}
 	log.Infof("Config: %#v", c)
 
+	log.Info("Song version: 01")
+
 	// Run confd.
 	run.Run(c)
 }
