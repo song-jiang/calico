@@ -421,6 +421,7 @@ kind-k8st-run-test: .calico_test.created $(KIND_KUBECONFIG)
 
 .PHONY: kind-k8st-cleanup
 kind-k8st-cleanup: kind-cluster-destroy
+	docker rm -f kind-node-tor
 
 .PHONY: st
 ## Run the system tests
