@@ -50,6 +50,10 @@ import (
 	"github.com/projectcalico/calico/libcalico-go/lib/winutils"
 )
 
+// A global variable to hold target ip of the VM.
+var targetVmIP string
+var targetVmName string
+
 // CmdAddK8s performs the "ADD" operation on a kubernetes pod
 // Having kubernetes code in its own file avoids polluting the mainline code. It's expected that the kubernetes case will
 // more special casing than the mainline code.
@@ -189,6 +193,8 @@ func CmdAddK8s(ctx context.Context, args *skel.CmdArgs, conf types.NetConf, epID
 	var generateName string
 	var serviceAccount string
 
+	logger.Info("Song Calico CNI live migration version: 01")
+
 	// Only attempt to fetch the labels and annotations from Kubernetes
 	// if the policy type has been set to "k8s". This allows users to
 	// run the plugin under Kubernetes without needing it to access the
@@ -198,7 +204,12 @@ func CmdAddK8s(ctx context.Context, args *skel.CmdArgs, conf types.NetConf, epID
 		if err != nil {
 			return nil, err
 		}
-		logger.WithField("NS Annotations", annotNS).Debug("Fetched K8s namespace annotations")
+		logger.WithField("NS Annotations", annotNS).Info("Fetched K8s namespace annotations")
+
+		if len(annotNS["migration.target.vm.name"]) != 0 && len(annotNS["migration.target.vm.ip"]) != 0 {
+			targetVmName = annotNS["migration.target.vm.name"]
+			targetVmIP = annotNS["migration.target.vm.ip"]
+		}
 
 		labels, annot, ports, profiles, generateName, serviceAccount, err = getK8sPodInfo(client, epIDs.Pod, epIDs.Namespace)
 		if err != nil {
@@ -309,13 +320,38 @@ func CmdAddK8s(ctx context.Context, args *skel.CmdArgs, conf types.NetConf, epID
 	ipAddrsNoIpam := annot["cni.projectcalico.org/ipAddrsNoIpam"]
 	ipAddrs := annot["cni.projectcalico.org/ipAddrs"]
 
+	logger.Infof("ipAddrsNoIpam %s -- ipAddrs %s", ipAddrsNoIpam, ipAddrs)
+
 	// Switch based on which annotations are passed or not passed.
 	switch {
 	case ipAddrs == "" && ipAddrsNoIpam == "":
-		// Call the IPAM plugin.
-		result, err = utils.AddIPAM(conf, args, logger)
-		if err != nil {
-			return nil, err
+		// If it is a target VM, use original IP set by namespace annotations
+		if epIDs.Namespace == "default" && len(targetVmIP) != 0 {
+			logger.Infof("Target VM pod is created %+v.", epIDs)
+
+			r := cniv1.Result{
+				CNIVersion: cniv1.ImplementedSpecVersion,
+			}
+
+			ip := net.ParseIP(targetVmIP)
+			if ip == nil {
+				logger.Errorf("Wrong target VM IP: %s", targetVmIP)
+				return nil, fmt.Errorf("wrong target VM IP")
+			}
+
+			// It's an IPv4 address.
+			ipNetwork := net.IPNet{IP: ip, Mask: net.CIDRMask(32, 32)}
+			r.IPs = append(r.IPs, &cniv1.IPConfig{
+				Address: ipNetwork,
+			})
+			result = &r
+			logger.Infof("Bypassing IPAM to set the result to: %+v", result)
+		} else {
+			// Call the IPAM plugin.
+			result, err = utils.AddIPAM(conf, args, logger)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 	case ipAddrs != "" && ipAddrsNoIpam != "":
@@ -409,6 +445,7 @@ func CmdAddK8s(ctx context.Context, args *skel.CmdArgs, conf types.NetConf, epID
 		endpoint.Spec.Profiles = []string{conf.Name}
 	}
 
+	logger.Infof("check again result: %+v", result)
 	// Populate the endpoint with the output from the IPAM plugin.
 	if err = utils.PopulateEndpointNets(endpoint, result); err != nil {
 		// Cleanup IP allocation and return the error.
