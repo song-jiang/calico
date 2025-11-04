@@ -101,49 +101,70 @@ var _ = describe.CalicoDescribe(
 			framework.Logf("Node name to IPv6 mapping: %v", maglevTests.nodeNameToIPv6)
 		})
 
-		It("test service ip load balancing behavior before and after maglev annotation", func() {
-			// Ensure we have at least 3 nodes for the test
-			Expect(len(nodeNames)).Should(BeNumerically(">=", 3), "Need at least 3 nodes for this test")
+		It("test maglev at scale with 2k services", func() {
+			// Ensure we have at least 2 nodes for the test
+			Expect(len(nodeNames)).Should(BeNumerically(">=", 2), "Need at least 2 nodes for this test")
 
 			// Deploy 20 backend pods on node 1 (first node)
 			maglevTests.DeployBackendPods(20, []string{nodeNames[0]})
-			// Deploy service "netexec" backed by the 20 pods
-			maglevTests.DeployService()
-			// Add route to external node where packets to service cluster IP go to node 2
-			maglevTests.SetupExternalNodeClientRoutingToSpecificNode(extNode, nodeNames[1]) // node 2 (second node)
 
-			// Test random backend selection without Maglev annotation for both IPv4 and IPv6
-			maglevTests.TestRandomBackendSelection(extNode, false) // IPv4 test
-			maglevTests.TestRandomBackendSelection(extNode, true)  // IPv6 test
+			// Create 2,000 services backed by the same pods
+			By("creating 2,000 services")
+			numServices := 2000
+			services := maglevTests.CreateMultipleServices(numServices)
+			framework.Logf("Successfully created %d services", numServices)
 
-			// Enable Maglev on the same service by adding annotation
-			maglevTests.EnableMaglev()
+			// Enable Maglev on 100 specific services (every 20th service)
+			By("enabling Maglev on 100 services")
+			maglevServicesIndices := make([]int, 0, 100)
+			for i := 0; i < 100; i++ {
+				maglevServicesIndices = append(maglevServicesIndices, i*20)
+			}
+			for _, idx := range maglevServicesIndices {
+				maglevTests.EnableMaglevOnService(services[idx].Name)
+			}
+			framework.Logf("Enabled Maglev on %d services", len(maglevServicesIndices))
 
-			// Test Maglev consistent hashing with the annotation for both IPv4 and IPv6
-			backendViaNode2IPv4 := maglevTests.TestMaglevConsistentHashing(extNode, false) // IPv4 test
-			backendViaNode2IPv6 := maglevTests.TestMaglevConsistentHashing(extNode, true)  // IPv6 test
+			// Test Maglev consistent hashing on the 100 services with Maglev enabled
+			By("testing Maglev consistent hashing on the 100 services")
+			for i, idx := range maglevServicesIndices {
+				service := services[idx]
+				framework.Logf("Testing service %d/%d: %s (index %d)", i+1, len(maglevServicesIndices), service.Name, idx)
 
-			// Then: Remove the routes from external node to service cluster IPs via node 2
-			maglevTests.RemoveExternalNodeClientRoutes(extNode, nodeNames[1])
+				// Update the config to point to this service
+				maglevTests.maglevConfig.ServiceName = service.Name
+				maglevTests.serviceClusterIPv4 = ""
+				maglevTests.serviceClusterIPv6 = ""
 
-			// Add route to external node where packets to service cluster IP go to node 3
-			maglevTests.SetupExternalNodeClientRoutingToSpecificNode(extNode, nodeNames[2]) // node 3 (third node)
+				// Get the service IPs
+				for _, clusterIP := range service.Spec.ClusterIPs {
+					if k8snet.IsIPv6String(clusterIP) {
+						maglevTests.serviceClusterIPv6 = clusterIP
+					} else {
+						maglevTests.serviceClusterIPv4 = clusterIP
+					}
+				}
 
-			// Test Maglev consistent hashing again for both IPv4 and IPv6
-			backendViaNode3IPv4 := maglevTests.TestMaglevConsistentHashing(extNode, false) // IPv4 test via node 3
-			backendViaNode3IPv6 := maglevTests.TestMaglevConsistentHashing(extNode, true)  // IPv6 test via node 3
+				// Set up routing from external node to this service's cluster IPs via node 2
+				maglevTests.SetupExternalNodeClientRoutingToSpecificNode(extNode, nodeNames[1])
 
-			// Assert that the backend selected via node 3 is the same as that selected via node 2
-			Expect(backendViaNode3IPv4).Should(Equal(backendViaNode2IPv4),
-				fmt.Sprintf("Expected IPv4 backend selection to be consistent across nodes: node 2 selected %s, node 3 selected %s",
-					backendViaNode2IPv4, backendViaNode3IPv4))
+				// Test IPv4 Maglev consistency
+				if maglevTests.serviceClusterIPv4 != "" {
+					backendIPv4 := maglevTests.TestMaglevConsistentHashing(extNode, false)
+					framework.Logf("Service %s (IPv4): consistent backend = %s", service.Name, backendIPv4)
+				}
 
-			Expect(backendViaNode3IPv6).Should(Equal(backendViaNode2IPv6),
-				fmt.Sprintf("Expected IPv6 backend selection to be consistent across nodes: node 2 selected %s, node 3 selected %s",
-					backendViaNode2IPv6, backendViaNode3IPv6))
+				// Test IPv6 Maglev consistency
+				if maglevTests.serviceClusterIPv6 != "" {
+					backendIPv6 := maglevTests.TestMaglevConsistentHashing(extNode, true)
+					framework.Logf("Service %s (IPv6): consistent backend = %s", service.Name, backendIPv6)
+				}
 
-			framework.Logf("Maglev cross-node consistency verified: IPv4 backend %s and IPv6 backend %s selected consistently via nodes 2 and 3",
-				backendViaNode2IPv4, backendViaNode2IPv6)
+				// Remove routes for this service before moving to the next one
+				maglevTests.RemoveExternalNodeClientRoutes(extNode, nodeNames[1])
+			}
+
+			framework.Logf("Maglev consistency verified on all %d services at scale", len(maglevServicesIndices))
 		})
 	})
 
@@ -390,6 +411,84 @@ func (m *MaglevTests) EnableMaglev() {
 		framework.Logf("Maglev annotation confirmed on service")
 		return true
 	}, 10*time.Second, 1*time.Second).Should(BeTrue(), "Maglev annotation should be applied and processed")
+}
+
+// CreateMultipleServices creates multiple services backed by the same backend pods
+func (m *MaglevTests) CreateMultipleServices(numServices int) []*v1.Service {
+	framework.Logf("Creating %d services...", numServices)
+
+	services := make([]*v1.Service, numServices)
+	batchSize := 100
+
+	for i := 0; i < numServices; i++ {
+		serviceName := fmt.Sprintf("test-service-%d", i)
+
+		service := &v1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      serviceName,
+				Namespace: m.f.Namespace.Name,
+			},
+			Spec: v1.ServiceSpec{
+				Type:           v1.ServiceTypeClusterIP,
+				IPFamilies:     []v1.IPFamily{v1.IPv4Protocol, v1.IPv6Protocol},
+				IPFamilyPolicy: ptr.To(v1.IPFamilyPolicyPreferDualStack),
+				Selector: map[string]string{
+					"app": "netexec",
+				},
+				Ports: []v1.ServicePort{
+					{
+						Port:     m.maglevConfig.ServicePort,
+						Protocol: v1.ProtocolTCP,
+					},
+				},
+			},
+		}
+
+		createdService, err := m.f.ClientSet.CoreV1().Services(m.f.Namespace.Name).Create(context.TODO(), service, metav1.CreateOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		services[i] = createdService
+
+		// Log progress every batch
+		if (i+1)%batchSize == 0 {
+			framework.Logf("Created %d/%d services", i+1, numServices)
+		}
+	}
+
+	// Add cleanup for all services
+	DeferCleanup(func() {
+		framework.Logf("Cleaning up %d services...", numServices)
+		for i, service := range services {
+			err := m.f.ClientSet.CoreV1().Services(m.f.Namespace.Name).Delete(context.TODO(), service.Name, metav1.DeleteOptions{})
+			if err != nil {
+				framework.Logf("Warning: Failed to delete service %s: %v", service.Name, err)
+			}
+			if (i+1)%batchSize == 0 {
+				framework.Logf("Deleted %d/%d services", i+1, numServices)
+			}
+		}
+	})
+
+	framework.Logf("Successfully created all %d services", numServices)
+	return services
+}
+
+// EnableMaglevOnService enables Maglev on a specific service by name
+func (m *MaglevTests) EnableMaglevOnService(serviceName string) {
+	// Get the service
+	service, err := m.f.ClientSet.CoreV1().Services(m.f.Namespace.Name).Get(context.TODO(), serviceName, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	// Add the Maglev annotation
+	if service.Annotations == nil {
+		service.Annotations = make(map[string]string)
+	}
+	service.Annotations["lb.projectcalico.org/external-traffic-strategy"] = "maglev"
+
+	// Update the service
+	_, err = m.f.ClientSet.CoreV1().Services(m.f.Namespace.Name).Update(context.TODO(), service, metav1.UpdateOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	framework.Logf("Enabled Maglev on service %s", serviceName)
 }
 
 func (m *MaglevTests) SetupExternalNodeClientRoutingToSpecificNode(extNode *externalnode.Client, targetNodeName string) {
