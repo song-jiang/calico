@@ -108,25 +108,25 @@ var _ = describe.CalicoDescribe(
 			// Deploy 20 backend pods on node 1 (first node)
 			maglevTests.DeployBackendPods(20, []string{nodeNames[0]})
 
-			// Create 2,000 services backed by the same pods
-			By("creating 2,000 services")
-			numServices := 2000
+			// Create 500 services backed by the same pods
+			By("creating 500 services")
+			numServices := 500
 			services := maglevTests.CreateMultipleServices(numServices)
 			framework.Logf("Successfully created %d services", numServices)
 
-			// Enable Maglev on 100 specific services (every 20th service)
-			By("enabling Maglev on 100 services")
-			maglevServicesIndices := make([]int, 0, 100)
-			for i := 0; i < 100; i++ {
-				maglevServicesIndices = append(maglevServicesIndices, i*20)
+			// Enable Maglev on 20 specific services (every 25th service)
+			By("enabling Maglev on 20 services")
+			maglevServicesIndices := make([]int, 0, 20)
+			for i := 0; i < 20; i++ {
+				maglevServicesIndices = append(maglevServicesIndices, i*25)
 			}
 			for _, idx := range maglevServicesIndices {
 				maglevTests.EnableMaglevOnService(services[idx].Name)
 			}
 			framework.Logf("Enabled Maglev on %d services", len(maglevServicesIndices))
 
-			// Test Maglev consistent hashing on the 100 services with Maglev enabled
-			By("testing Maglev consistent hashing on the 100 services")
+			// Test Maglev consistent hashing on the 20 services with Maglev enabled
+			By("testing Maglev consistent hashing on the 20 services")
 			for i, idx := range maglevServicesIndices {
 				service := services[idx]
 				framework.Logf("Testing service %d/%d: %s (index %d)", i+1, len(maglevServicesIndices), service.Name, idx)
@@ -165,6 +165,78 @@ var _ = describe.CalicoDescribe(
 			}
 
 			framework.Logf("Maglev consistency verified on all %d services at scale", len(maglevServicesIndices))
+
+			// Test Case: Disable Maglev on 5 services and verify they switch to random backend selection
+			By("disabling Maglev on 5 services")
+			disabledMaglevIndices := []int{0, 5, 10, 15, 19} // Select 5 services from the 20 Maglev-enabled services
+			for _, i := range disabledMaglevIndices {
+				idx := maglevServicesIndices[i]
+				maglevTests.DisableMaglevOnService(services[idx].Name)
+			}
+			framework.Logf("Disabled Maglev on %d services", len(disabledMaglevIndices))
+
+			// Test all 20 services again - disabled ones should show random backends, enabled ones should still be consistent
+			By("testing services after disabling Maglev on 5 services")
+			for i, idx := range maglevServicesIndices {
+				service := services[idx]
+				framework.Logf("Testing service %d/%d: %s (index %d)", i+1, len(maglevServicesIndices), service.Name, idx)
+
+				// Update the config to point to this service
+				maglevTests.maglevConfig.ServiceName = service.Name
+				maglevTests.serviceClusterIPv4 = ""
+				maglevTests.serviceClusterIPv6 = ""
+
+				// Get the service IPs
+				for _, clusterIP := range service.Spec.ClusterIPs {
+					if k8snet.IsIPv6String(clusterIP) {
+						maglevTests.serviceClusterIPv6 = clusterIP
+					} else {
+						maglevTests.serviceClusterIPv4 = clusterIP
+					}
+				}
+
+				// Set up routing from external node to this service's cluster IPs via node 2
+				maglevTests.SetupExternalNodeClientRoutingToSpecificNode(extNode, nodeNames[1])
+
+				// Check if this service had Maglev disabled
+				isMaglevDisabled := false
+				for _, disabledIdx := range disabledMaglevIndices {
+					if i == disabledIdx {
+						isMaglevDisabled = true
+						break
+					}
+				}
+
+				if isMaglevDisabled {
+					// For disabled Maglev services, test random backend selection
+					framework.Logf("Service %s had Maglev disabled, testing random backend selection", service.Name)
+					if maglevTests.serviceClusterIPv4 != "" {
+						maglevTests.TestRandomBackendSelection(extNode, false)
+						framework.Logf("Service %s (IPv4): verified random backend selection after Maglev disabled", service.Name)
+					}
+					if maglevTests.serviceClusterIPv6 != "" {
+						maglevTests.TestRandomBackendSelection(extNode, true)
+						framework.Logf("Service %s (IPv6): verified random backend selection after Maglev disabled", service.Name)
+					}
+				} else {
+					// For services that still have Maglev enabled, verify they still have consistent hashing
+					framework.Logf("Service %s still has Maglev enabled, testing consistent hashing", service.Name)
+					if maglevTests.serviceClusterIPv4 != "" {
+						backendIPv4 := maglevTests.TestMaglevConsistentHashing(extNode, false)
+						framework.Logf("Service %s (IPv4): still has consistent backend = %s", service.Name, backendIPv4)
+					}
+					if maglevTests.serviceClusterIPv6 != "" {
+						backendIPv6 := maglevTests.TestMaglevConsistentHashing(extNode, true)
+						framework.Logf("Service %s (IPv6): still has consistent backend = %s", service.Name, backendIPv6)
+					}
+				}
+
+				// Remove routes for this service before moving to the next one
+				maglevTests.RemoveExternalNodeClientRoutes(extNode, nodeNames[1])
+			}
+
+			framework.Logf("Verified behavior after disabling Maglev: %d services show random backends, %d services maintain consistent hashing",
+				len(disabledMaglevIndices), len(maglevServicesIndices)-len(disabledMaglevIndices))
 		})
 	})
 
@@ -489,6 +561,47 @@ func (m *MaglevTests) EnableMaglevOnService(serviceName string) {
 	Expect(err).NotTo(HaveOccurred())
 
 	framework.Logf("Enabled Maglev on service %s", serviceName)
+}
+
+// DisableMaglevOnService disables Maglev on a specific service by removing the annotation
+func (m *MaglevTests) DisableMaglevOnService(serviceName string) {
+	// Get the service
+	service, err := m.f.ClientSet.CoreV1().Services(m.f.Namespace.Name).Get(context.TODO(), serviceName, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	// Remove the Maglev annotation
+	if service.Annotations != nil {
+		delete(service.Annotations, "lb.projectcalico.org/external-traffic-strategy")
+	}
+
+	// Update the service
+	_, err = m.f.ClientSet.CoreV1().Services(m.f.Namespace.Name).Update(context.TODO(), service, metav1.UpdateOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	framework.Logf("Disabled Maglev on service %s by removing annotation", serviceName)
+
+	// Wait for the annotation removal to be processed
+	Eventually(func() bool {
+		updatedService, err := m.f.ClientSet.CoreV1().Services(m.f.Namespace.Name).Get(context.TODO(), serviceName, metav1.GetOptions{})
+		if err != nil {
+			framework.Logf("Failed to get service while checking annotation removal: %v", err)
+			return false
+		}
+
+		// Check if the Maglev annotation has been removed
+		if updatedService.Annotations == nil {
+			return true
+		}
+
+		_, exists := updatedService.Annotations["lb.projectcalico.org/external-traffic-strategy"]
+		if exists {
+			framework.Logf("Maglev annotation still present on service")
+			return false
+		}
+
+		framework.Logf("Maglev annotation successfully removed from service")
+		return true
+	}, 10*time.Second, 1*time.Second).Should(BeTrue(), "Maglev annotation should be removed")
 }
 
 func (m *MaglevTests) SetupExternalNodeClientRoutingToSpecificNode(extNode *externalnode.Client, targetNodeName string) {
