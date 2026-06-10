@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# deploy-forklift-prereqs.sh — installs prerequisites for testing Forklift
+# 01-deploy-forklift-prereqs.sh — installs prerequisites for testing Forklift
 # vSphere-to-KubeVirt migrations on a KIND cluster that already has Calico
 # and MockVirt deployed.
 #
@@ -28,7 +28,7 @@
 # Every step is idempotent — already-installed components are skipped.
 #
 # Usage:
-#   ./hack/deploy-forklift-prereqs.sh
+#   ./hack/test/kind/forklift/01-deploy-forklift-prereqs.sh
 #
 # Prerequisites:
 #   - A KIND cluster with Calico and MockVirt already deployed
@@ -39,7 +39,7 @@
 
 set -euo pipefail
 
-REPO_ROOT=$(cd "$(dirname "$0")/.."; pwd)
+REPO_ROOT=$(cd "$(dirname "$0")/../../../.."; pwd)
 
 export KUBECONFIG="${KUBECONFIG:-${REPO_ROOT}/hack/test/kind/kind-kubeconfig.yaml}"
 

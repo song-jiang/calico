@@ -13,11 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# deploy-mockvirt.sh — downloads and deploys MockVirt (KubeVirt simulation
+# 00-deploy-mockvirt.sh — downloads and deploys MockVirt (KubeVirt simulation
 # mode) onto an existing KIND cluster.
 #
 # Usage:
-#   ./hack/deploy-mockvirt.sh
+#   ./hack/test/kind/forklift/00-deploy-mockvirt.sh
 #
 # Environment variables (all optional):
 #   MOCKVIRT_RELEASE_URL  Base URL for release assets
@@ -29,7 +29,7 @@
 
 set -euo pipefail
 
-REPO_ROOT=$(cd "$(dirname "$0")/.."; pwd)
+REPO_ROOT=$(cd "$(dirname "$0")/../../../.."; pwd)
 
 : "${MOCKVIRT_RELEASE_URL:=https://github.com/tigera/kubevirt/releases/download/mockvirt-v1.8.1}"
 : "${MOCKVIRT_KUBECONFIG:=${REPO_ROOT}/hack/test/kind/kind-kubeconfig.yaml}"

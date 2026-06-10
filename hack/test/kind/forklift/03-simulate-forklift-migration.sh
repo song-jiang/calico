@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# simulate-forklift-migration.sh — creates Forklift resources to simulate a
+# 03-simulate-forklift-migration.sh — creates Forklift resources to simulate a
 # vSphere-to-KubeVirt cold migration using vcsim and a Calico L2 bridge NAD.
 #
 # This script creates:
@@ -28,11 +28,11 @@
 # Every step is idempotent — already-existing resources are skipped.
 #
 # Usage:
-#   ./hack/simulate-forklift-migration.sh
+#   ./hack/test/kind/forklift/03-simulate-forklift-migration.sh
 #
 # Prerequisites:
 #   - A KIND cluster with Calico, MockVirt, and Forklift deployed
-#   - vcsim running (see deploy-forklift-prereqs.sh)
+#   - vcsim running (see 01-deploy-forklift-prereqs.sh)
 #   - kubectl configured to talk to the cluster
 #
 # Environment variables (all optional):
@@ -52,7 +52,7 @@
 
 set -euo pipefail
 
-REPO_ROOT=$(cd "$(dirname "$0")/.."; pwd)
+REPO_ROOT=$(cd "$(dirname "$0")/../../../.."; pwd)
 
 export KUBECONFIG="${KUBECONFIG:-${REPO_ROOT}/hack/test/kind/kind-kubeconfig.yaml}"
 
