@@ -35,7 +35,10 @@
 #   - kubectl configured to talk to the cluster
 #
 # Environment variables (all optional):
-#   KUBECONFIG   Path to kubeconfig (default: hack/test/kind/kind-kubeconfig.yaml)
+#   KUBECONFIG       Path to kubeconfig (default: hack/test/kind/kind-kubeconfig.yaml)
+#   VCSIM_VLAN_ID    Default VLAN to stamp on the vcsim portgroup (default: 100)
+#   VCSIM_PORTGROUP  vcsim portgroup to tag (default: DC0_DVPG0)
+#   GOVC_IMAGE       govc container image (default: vmware/govc:latest)
 
 set -euo pipefail
 
@@ -129,6 +132,34 @@ EOF
     kubectl rollout status deployment/vcsim -n default --timeout=120s
     echo "  Installed (service: vcsim.default.svc:8989)."
 fi
+echo
+
+# --------------------------------------------------------------------------
+# 2b. vcsim portgroup default VLAN
+#     vcsim's DC0_DVPG0 defaults to VLAN 0. Set it to ${VCSIM_VLAN_ID} so the
+#     simulated source network is VLAN-tagged like a real vSphere DVPG. vcsim is
+#     an in-memory simulator, so this does NOT persist across a vcsim pod
+#     restart — it runs on every invocation (outside the install guard above).
+#     Requires docker + the govc image; skipped with a warning if unavailable.
+# --------------------------------------------------------------------------
+echo "--- vcsim portgroup VLAN ---"
+VCSIM_VLAN_ID="${VCSIM_VLAN_ID:-100}"
+VCSIM_PORTGROUP="${VCSIM_PORTGROUP:-DC0_DVPG0}"
+GOVC_IMAGE="${GOVC_IMAGE:-vmware/govc:latest}"
+kubectl rollout status deployment/vcsim -n default --timeout=120s >/dev/null 2>&1 || true
+_vlan_pf_log=$(mktemp)
+kubectl port-forward -n default svc/vcsim 18989:8989 >"${_vlan_pf_log}" 2>&1 &
+_vlan_pf=$!
+for _ in $(seq 1 15); do grep -q 'Forwarding from' "${_vlan_pf_log}" 2>/dev/null && break; sleep 1; done
+if docker run --rm --network host --entrypoint /govc \
+        -e GOVC_URL='https://user:pass@127.0.0.1:18989/sdk' -e GOVC_INSECURE=1 \
+        "${GOVC_IMAGE}" dvs.portgroup.change -vlan "${VCSIM_VLAN_ID}" "${VCSIM_PORTGROUP}" >/dev/null 2>&1; then
+    echo "  ${VCSIM_PORTGROUP} default VLAN set to ${VCSIM_VLAN_ID}."
+else
+    echo "  WARNING: could not set ${VCSIM_PORTGROUP} VLAN (docker/govc unavailable?); set it manually with govc."
+fi
+kill "${_vlan_pf}" 2>/dev/null || true
+rm -f "${_vlan_pf_log}"
 echo
 
 # --------------------------------------------------------------------------

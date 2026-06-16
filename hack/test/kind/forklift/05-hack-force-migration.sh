@@ -13,10 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# 04-simulate-forklift-vm-creation.sh — drives a Forklift vSphere→KubeVirt
+# 05-hack-force-migration.sh — drives a Forklift vSphere→KubeVirt
 # migration against vcsim all the way to a created destination VirtualMachine,
 # WITHOUT copying any disk data (vcsim has no disk data plane — see the sibling
-# 03-simulate-forklift-migration.sh, which stops at validation).
+# 04-create-migration-crs.sh, which stops at validation).
 #
 # This is useful for exercising the destination *build* path — in particular
 # the Calico L2 NIC annotations the vSphere Builder stamps onto the VM template
@@ -53,12 +53,13 @@
 # Idempotent: existing resources are skipped / re-applied.
 #
 # Usage:
-#   ./hack/test/kind/forklift/04-simulate-forklift-vm-creation.sh
+#   ./hack/test/kind/forklift/05-hack-force-migration.sh
 #
 # Prerequisites:
 #   - KIND cluster with Calico, MockVirt, and Forklift deployed
 #   - vcsim running (01-deploy-forklift-prereqs.sh)
 #   - CDI StorageProfile configured (02-configure-forklift-storage.sh)
+#   - Forklift operator + controller deployed (03-deploy-forklift.sh)
 #   - docker, jq, and the local kind-registry (for the fake VDDK image)
 #
 # Environment variables (all optional):
@@ -272,7 +273,7 @@ metadata:
   namespace: ${TARGET_NS}
 spec:
   config: |
-    {"cniVersion":"0.3.1","type":"calico","network":"default","ipam":{"type":"calico-ipam"}}
+    {"cniVersion":"0.3.1","type":"calico","policy":{"type":"k8s"},"datastore_type":"kubernetes","kubernetes":{"k8s_api_root":"https://10.96.0.1:443","kubeconfig":"/etc/cni/net.d/calico-kubeconfig"},"network":"default","ipam":{"type":"calico-ipam"}}
 EOF
 echo
 

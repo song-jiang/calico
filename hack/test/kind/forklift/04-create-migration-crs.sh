@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# 03-simulate-forklift-migration.sh — creates Forklift resources to simulate a
+# 04-create-migration-crs.sh — creates Forklift resources to simulate a
 # vSphere-to-KubeVirt cold migration using vcsim and a Calico L2 bridge NAD.
 #
 # This script creates:
@@ -28,11 +28,12 @@
 # Every step is idempotent — already-existing resources are skipped.
 #
 # Usage:
-#   ./hack/test/kind/forklift/03-simulate-forklift-migration.sh
+#   ./hack/test/kind/forklift/04-create-migration-crs.sh
 #
 # Prerequisites:
 #   - A KIND cluster with Calico, MockVirt, and Forklift deployed
 #   - vcsim running (see 01-deploy-forklift-prereqs.sh)
+#   - Forklift operator + controller deployed (03-deploy-forklift.sh)
 #   - kubectl configured to talk to the cluster
 #
 # Environment variables (all optional):
@@ -247,6 +248,9 @@ spec:
     {
       "cniVersion": "0.3.1",
       "type": "calico",
+      "policy": { "type": "k8s" },
+      "datastore_type": "kubernetes",
+      "kubernetes": { "k8s_api_root": "https://10.96.0.1:443", "kubeconfig": "/etc/cni/net.d/calico-kubeconfig" },
       "network": "default",
       "ipam": {
         "type": "calico-ipam"
