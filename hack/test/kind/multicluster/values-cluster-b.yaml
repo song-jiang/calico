@@ -1,0 +1,30 @@
+# Helm values overlay for cluster-b, layered on top of infra/values.yaml via
+# EXTRA_VALUES_FILES. See values-cluster-a.yaml for the rationale.
+installation:
+  calicoNetwork:
+    ipPools:
+    # encapsulation None: see values-cluster-a.yaml — routed BGP fabric, the
+    # operator's IPIP-Always default breaks ToR ECMP through the non-hosting
+    # node (tunl0 path doesn't work here).
+    - cidr: 10.245.0.0/16
+      encapsulation: None
+    nodeAddressAutodetectionV6: null
+
+apiServer:
+  apiServerDeployment:
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            kubernetes.io/hostname: cluster-b-control-plane
+  calicoWebhooksDeployment:
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            kubernetes.io/hostname: cluster-b-control-plane
+
+# Whisker disabled — not needed for the BGP fabric test and its dev image isn't
+# in the local registry (see values-cluster-a.yaml).
+whisker:
+  enabled: false

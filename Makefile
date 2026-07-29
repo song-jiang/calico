@@ -276,6 +276,18 @@ kind-migration-test:
 	KIND_CALICO_API_GROUP=crd.projectcalico.org/v1 $(MAKE) kind-up
 	$(REPO_ROOT)/hack/test/kind/migration/run_test.sh
 
+## Bring up two KIND clusters on separate docker networks joined by a two-ToR
+## plain-BGP fabric (Phase 1 of KubeVirt cross-cluster live-migration testing).
+## See hack/test/kind/multicluster/README.md.
+.PHONY: kind-multicluster-up
+kind-multicluster-up:
+	$(REPO_ROOT)/hack/test/kind/multicluster/bringup.sh
+
+## Tear down the two-cluster / two-ToR fabric created by kind-multicluster-up.
+.PHONY: kind-multicluster-down
+kind-multicluster-down:
+	$(REPO_ROOT)/hack/test/kind/multicluster/teardown.sh
+
 ## Create a kind cluster and run the conformance e2e tests.
 e2e-test:
 	$(MAKE) -C e2e build

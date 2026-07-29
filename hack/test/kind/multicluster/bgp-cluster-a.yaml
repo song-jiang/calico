@@ -1,0 +1,38 @@
+# Calico BGP config for cluster-a: keep the intra-cluster node-to-node mesh, run
+# in AS 65101, and peer every node with tor-a (AS 65001) at its rack-a address.
+# tor-a re-advertises cluster-b's pod routes (learned from tor-b over the fabric)
+# to these nodes, giving cross-cluster pod reachability.
+apiVersion: projectcalico.org/v3
+kind: BGPConfiguration
+metadata:
+  name: default
+spec:
+  nodeToNodeMeshEnabled: true
+  asNumber: 65101
+---
+apiVersion: projectcalico.org/v3
+kind: BGPPeer
+metadata:
+  name: tor-a
+spec:
+  peerIP: 172.31.0.253
+  asNumber: 65001
+---
+# Disabled pool covering cluster-b's pod CIDR: no IPs are ever assigned from
+# it; its only job is to land 10.245.0.0/16 in felix's all-ipam-pools ipset so
+# natOutgoing does NOT masquerade cross-cluster pod-to-pod traffic. Without it,
+# pings/gRPC to cluster-b pods leave SNATed to the node IP, which hides the
+# very pod-IP routability this harness exists to prove. Disabled pools are
+# skipped by the operator's GetActivePools, so this cannot re-trigger the
+# assign_ipv6 CNI problem, and the operator only deletes pools it owns.
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: remote-cluster-b-pods
+spec:
+  cidr: 10.245.0.0/16
+  disabled: true
+  nodeSelector: all()
+  ipipMode: Never
+  vxlanMode: Never
+  natOutgoing: false

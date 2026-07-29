@@ -1,0 +1,4 @@
+# Generated at runtime by bringup.sh (kind writes / `kind export kubeconfig`).
+# These contain local KIND cluster admin client certs+keys — never commit them.
+# bringup.sh regenerates them on every run.
+*-kubeconfig.yaml

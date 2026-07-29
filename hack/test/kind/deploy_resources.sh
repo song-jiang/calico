@@ -31,6 +31,14 @@
 #   VALUES_FILE        - path to base helm values file (default: infra/values.yaml)
 #   EXTRA_VALUES_FILES - space-separated list of additional helm values files to
 #                        layer on top of VALUES_FILE (later files override earlier)
+#   KIND_SKIP_LB_POOLS - set to "true" to skip applying the Calico LoadBalancer
+#                        IPPools (calico-lb-pools.yaml). Needed for IPv4-only
+#                        clusters: the operator enables IPv6 assignment in the
+#                        CNI config whenever ANY enabled IPv6 IPPool exists
+#                        (GetActivePools ignores allowedUses), and the
+#                        LoadBalancer-only fdff::/64 pool then makes every pod
+#                        ADD fail with "no pools match the required use
+#                        (Workload)" on the IPv6 leg.
 
 # Clean up background jobs on exit, and collect diagnostics on failure.
 set -m
@@ -284,6 +292,10 @@ echo "Calico is running."
 # These replace the legacy metallb default BGP pool; kube-controllers'
 # loadbalancer controller now does the IPAM, and confd handles BGP
 # advertisement based on each test's BGPConfiguration.
+if [ "${KIND_SKIP_LB_POOLS:-false}" = "true" ]; then
+  echo "KIND_SKIP_LB_POOLS=true - skipping Calico LoadBalancer IP pools"
+  exit 0
+fi
 echo "Applying Calico LoadBalancer IP pools"
 for attempt in $(seq 1 12); do
   if ${kubectl} apply -f ${INFRA_DIR}/calico-lb-pools.yaml; then

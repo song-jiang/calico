@@ -1,0 +1,41 @@
+# Helm values overlay for cluster-a, layered on top of infra/values.yaml via
+# EXTRA_VALUES_FILES (later files win; arrays are replaced, not merged).
+#
+# Overrides vs the base:
+#   * ipPools           -> cluster-a's IPv4 pod CIDR only (base is 192.168/16 + v6)
+#   * nodeAddressAutodetectionV6 -> null (single-stack IPv4 cluster)
+#   * apiServer/webhooks nodeSelector -> cluster-a-control-plane
+#     (base hardcodes kind-control-plane, which does not exist here)
+installation:
+  calicoNetwork:
+    ipPools:
+    # encapsulation None: this is a routed BGP fabric (nodes <-> ToR <-> ToR).
+    # The operator default (IPIP Always) breaks the ToR's ECMP: the mesh makes
+    # every node advertise every block, so the ToR load-balances across all
+    # nodes, and the "wrong node" then forwards over tunl0, which doesn't work
+    # here. With None, every node forwards over plain eth0 and any ECMP path
+    # is valid. (Phase 2 EVPN-VXLAN also assumes unencapsulated pods in-rack.)
+    - cidr: 10.244.0.0/16
+      encapsulation: None
+    nodeAddressAutodetectionV6: null
+
+apiServer:
+  apiServerDeployment:
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            kubernetes.io/hostname: cluster-a-control-plane
+  calicoWebhooksDeployment:
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            kubernetes.io/hostname: cluster-a-control-plane
+
+# Whisker (observability UI) is not needed for the BGP fabric test and its
+# image (localhost:5000/calico/whisker:test-build) is not in the local dev
+# registry, so disable it — otherwise deploy_resources.sh's "wait for all
+# TigeraStatus" blocks forever on whisker's ImagePullBackOff.
+whisker:
+  enabled: false

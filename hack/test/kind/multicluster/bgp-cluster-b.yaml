@@ -1,0 +1,31 @@
+# Calico BGP config for cluster-b: AS 65102, node-to-node mesh on, every node
+# peers with tor-b (AS 65002) at its rack-b address.
+apiVersion: projectcalico.org/v3
+kind: BGPConfiguration
+metadata:
+  name: default
+spec:
+  nodeToNodeMeshEnabled: true
+  asNumber: 65102
+---
+apiVersion: projectcalico.org/v3
+kind: BGPPeer
+metadata:
+  name: tor-b
+spec:
+  peerIP: 172.32.0.253
+  asNumber: 65002
+---
+# Disabled pool covering cluster-a's pod CIDR — prevents natOutgoing from
+# SNATing cross-cluster pod-to-pod traffic. See bgp-cluster-a.yaml.
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: remote-cluster-a-pods
+spec:
+  cidr: 10.244.0.0/16
+  disabled: true
+  nodeSelector: all()
+  ipipMode: Never
+  vxlanMode: Never
+  natOutgoing: false
